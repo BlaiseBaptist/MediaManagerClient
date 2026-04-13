@@ -5,9 +5,7 @@ use crate::{
 use anyhow::{Context, Result};
 use reqwest::{Body, Client, StatusCode, header};
 use std::{
-    io::ErrorKind,
-    path::{Path, PathBuf},
-    time::Duration,
+     io::ErrorKind, path::{Path, PathBuf}, time::Duration
 };
 use tokio::{fs, io::AsyncWriteExt, process::Command};
 use tokio_util::io::ReaderStream;
@@ -29,14 +27,11 @@ impl ServerClient {
             headers.insert(header::AUTHORIZATION, value);
         }
 
-        let mut builder = Client::builder()
+        let builder = Client::builder()
             .default_headers(headers)
             .danger_accept_invalid_certs(config.allow_insecure_tls)
             .timeout(Duration::from_secs(300));
 
-        if config.force_http1 {
-            builder = builder.http1_only();
-        }
 
         let http = builder.build().context("failed to build HTTP client")?;
 
@@ -65,7 +60,7 @@ impl ServerClient {
             .await
             .context("failed to decode job response")?
             .into_job();
-
+        println!("input url: {:?}",job );
         Ok(Some(job))
     }
 
@@ -174,13 +169,7 @@ impl ServerClient {
             .filename
             .as_deref()
             .map(sanitize_filename)
-            .unwrap_or_else(|| {
-                output_path
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .map(sanitize_filename)
-                    .unwrap_or_else(|| "output.bin".to_string())
-            });
+            .unwrap_or_else(|| job.planned_delivery_filename());
 
         let file = fs::File::open(output_path)
             .await

@@ -103,10 +103,12 @@ impl Job {
     }
 
     pub fn planned_output_path(&self, work_dir: &std::path::Path) -> std::path::PathBuf {
-        work_dir.join(&self.id).join(self.planned_output_filename())
+        work_dir
+            .join(&self.id)
+            .join(self.planned_staging_output_filename())
     }
 
-    pub fn planned_output_filename(&self) -> String {
+    pub fn planned_delivery_filename(&self) -> String {
         if let Some(delivery) = &self.delivery {
             if let Some(filename) = &delivery.filename {
                 return sanitize_filename(filename);
@@ -117,6 +119,15 @@ impl Job {
             .as_deref()
             .map(output_name_from_input)
             .unwrap_or_else(|| "output.bin".to_string())
+    }
+
+    pub fn planned_staging_output_filename(&self) -> String {
+        let delivery_filename = self.planned_delivery_filename();
+        if let Some((stem, extension)) = delivery_filename.rsplit_once('.') {
+            format!("{stem}.transcoded.{extension}")
+        } else {
+            format!("{delivery_filename}.transcoded")
+        }
     }
 }
 
