@@ -22,6 +22,74 @@ pub struct Job {
     pub input_url: String,
     #[serde(default)]
     pub filename: Option<String>,
+    #[serde(default)]
+    pub transcode: Option<TranscodeSpec>,
+    #[serde(default)]
+    pub delivery: Option<DeliverySpec>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TranscodeSpec {
+    #[serde(default)]
+    pub quality: Option<String>,
+    #[serde(default)]
+    pub video_codec: Option<String>,
+    #[serde(default)]
+    pub audio_codec: Option<String>,
+    #[serde(default)]
+    pub ffmpeg_args: Vec<String>,
+}
+
+impl TranscodeSpec {
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+
+        if let Some(value) = &self.quality {
+            parts.push(format!("quality={value}"));
+        }
+        if let Some(value) = &self.video_codec {
+            parts.push(format!("video_codec={value}"));
+        }
+        if let Some(value) = &self.audio_codec {
+            parts.push(format!("audio_codec={value}"));
+        }
+        if !self.ffmpeg_args.is_empty() {
+            parts.push(format!("ffmpeg_args={}", self.ffmpeg_args.join(" ")));
+        }
+
+        if parts.is_empty() {
+            "no transcode spec".to_string()
+        } else {
+            parts.join(", ")
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DeliverySpec {
+    #[serde(default)]
+    pub output_url: Option<String>,
+    #[serde(default)]
+    pub filename: Option<String>,
+}
+
+impl DeliverySpec {
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+
+        if let Some(value) = &self.output_url {
+            parts.push(format!("output_url={value}"));
+        }
+        if let Some(value) = &self.filename {
+            parts.push(format!("filename={value}"));
+        }
+
+        if parts.is_empty() {
+            "no delivery spec".to_string()
+        } else {
+            parts.join(", ")
+        }
+    }
 }
 
 #[allow(dead_code)]

@@ -1,0 +1,192 @@
+# MediaManagerClient
+
+Rust worker client for the MediaManager server.
+
+## Current behavior
+
+The client:
+
+1. polls the server for the next job
+2. downloads the file from the job's `input_url`
+3. stores the file under `MEDIA_MANAGER_WORK_DIR/<job.id>/`
+4. logs any transcode and delivery instructions it receives
+
+It does **not** transcode yet and it does **not** call `complete` yet.
+
+## Environment variables
+
+- `MEDIA_MANAGER_SERVER_URL`  
+  Required. Base URL of the Django server, for example `http://localhost:8000`
+
+- `MEDIA_MANAGER_JOB_PATH`  
+  Optional. Defaults to `/api/worker/jobs/next`
+
+- `MEDIA_MANAGER_COMPLETE_PATH`  
+  Optional. Defaults to `/api/worker/jobs/{job_id}/complete`
+
+- `MEDIA_MANAGER_FAILED_PATH`  
+  Optional. Defaults to `/api/worker/jobs/{job_id}/failed`
+
+- `MEDIA_MANAGER_WORKER_ID`  
+  Optional. Defaults to `worker-<pid>`
+
+- `MEDIA_MANAGER_POLL_INTERVAL_SECS`  
+  Optional. Defaults to `5`
+
+- `MEDIA_MANAGER_WORK_DIR`  
+  Optional. Defaults to `./work`
+
+- `MEDIA_MANAGER_AUTH_TOKEN`  
+  Optional. If set, the client sends `Authorization: Bearer <token>` on requests
+
+## Job claim endpoint
+
+### Request
+
+```http
+GET /api/worker/jobs/next?worker_id=<worker_id>
+```
+
+### Responses
+
+`204 No Content`
+
+No job is available.
+
+`404 Not Found`
+
+Treated the same as no job by the client.
+
+`200 OK`
+
+Returns a JSON job payload.
+
+## Job payload format
+
+The client expects this shape:
+
+```json
+{
+  "id": "job-123",
+  "input_url": "http://localhost:8000/api/media/jobs/job-123/input",
+  "filename": "input.mp4",
+  "transcode": {
+    "quality": "23",
+    "video_codec": "libx264",
+    "audio_codec": "aac",
+    "ffmpeg_args": ["-preset", "slow", "-movflags", "+faststart"]
+  },
+  "delivery": {
+    "output_url": "http://localhost:8000/api/worker/jobs/job-123/output",
+    "filename": "output.mp4"
+  }
+}
+```
+
+### Required fields
+
+- `id`  
+  Job identifier. Used as the local work directory name.
+
+- `input_url`  
+  URL to download the source file from.
+
+### Optional fields
+
+- `filename`  
+  Suggested local filename for the downloaded input.
+
+- `transcode`  
+  FFmpeg instructions. If omitted, the client still accepts the job.
+
+- `delivery`  
+  Output target instructions. If omitted, the client still accepts the job.
+
+## `transcode` block
+
+The client currently stores these values and logs them for visibility.
+
+```json
+{
+  "quality": "23",
+  "video_codec": "libx264",
+  "audio_codec": "aac",
+  "ffmpeg_args": ["-preset", "slow"]
+}
+```
+
+- `quality`
+  - free-form quality selector
+  - can map to CRF, bitrate, or any server-side convention you choose
+
+- `video_codec`
+  - example values: `libx264`, `libx265`, `h264_nvenc`
+
+- `audio_codec`
+  - example values: `aac`, `libopus`, `copy`
+
+- `ffmpeg_args`
+  - extra FFmpeg CLI arguments in order
+  - example: `["-preset", "slow", "-movflags", "+faststart"]`
+
+## `delivery` block
+
+The client currently stores these values and logs them for visibility.
+
+```json
+{
+  "output_url": "http://localhost:8000/api/worker/jobs/job-123/output",
+  "filename": "output.mp4"
+}
+```
+
+- `output_url`
+  - where the finished file should eventually be sent
+
+- `filename`
+  - suggested filename for the final output artifact
+
+## Lifecycle callbacks
+
+The client has callback methods prepared for future use.
+
+### Complete
+
+```http
+POST /api/worker/jobs/{job_id}/complete
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "worker_id": "worker-123",
+  "output_url": "http://localhost:8000/api/worker/jobs/job-123/output"
+}
+```
+
+`output_url` is optional.
+
+### Failed
+
+```http
+POST /api/worker/jobs/{job_id}/failed
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "worker_id": "worker-123",
+  "error": "ffmpeg exited with code 1"
+}
+```
+
+## Notes for the server
+
+- Unknown JSON fields are ignored by the client.
+- `id` and `input_url` should be present for every job.
+- The client downloads the file immediately after job claim and writes it to disk.
+- Completion reporting is not active yet, so the server should not depend on it.

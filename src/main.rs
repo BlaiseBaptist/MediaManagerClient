@@ -36,7 +36,24 @@ async fn run(client: ServerClient, config: Config) -> Result<()> {
         match client.poll_next_job().await? {
             Some(job) => {
                 let path = client.receive_job_file(&job).await?;
-                println!("Received job {} -> {}", job.id, path.display());
+                let transcode = job
+                    .transcode
+                    .as_ref()
+                    .map(|spec| spec.summary())
+                    .unwrap_or_else(|| "no transcode spec".to_string());
+                let delivery = job
+                    .delivery
+                    .as_ref()
+                    .map(|spec| spec.summary())
+                    .unwrap_or_else(|| "no delivery spec".to_string());
+
+                println!(
+                    "Received job {} -> {} [{}; {}]",
+                    job.id,
+                    path.display(),
+                    transcode,
+                    delivery
+                );
             }
             None => {
                 tokio::time::sleep(config.poll_interval).await;
