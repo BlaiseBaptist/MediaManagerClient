@@ -5,7 +5,9 @@ use crate::{
 use anyhow::{Context, Result};
 use reqwest::{Body, Client, StatusCode, header};
 use std::{
-     io::ErrorKind, path::{Path, PathBuf}, time::Duration
+    io::ErrorKind,
+    path::{Path, PathBuf},
+    time::Duration,
 };
 use tokio::{fs, io::AsyncWriteExt, process::Command};
 use tokio_util::io::ReaderStream;
@@ -31,7 +33,6 @@ impl ServerClient {
             .default_headers(headers)
             .danger_accept_invalid_certs(config.allow_insecure_tls)
             .timeout(Duration::from_secs(300));
-
 
         let http = builder.build().context("failed to build HTTP client")?;
 
@@ -60,7 +61,7 @@ impl ServerClient {
             .await
             .context("failed to decode job response")?
             .into_job();
-        println!("input url: {:?}",job );
+        println!("input url: {:?}", job);
         Ok(Some(job))
     }
 
@@ -70,8 +71,7 @@ impl ServerClient {
             .await
             .with_context(|| format!("failed to create work dir {}", job_dir.display()))?;
 
-        let filename = self.resolve_filename(job)?;
-        let final_path = job_dir.join(filename);
+        let final_path = job_dir.join(job.filename.clone());
         let temp_path = final_path.with_extension("part");
 
         let mut response = self
@@ -151,49 +151,30 @@ impl ServerClient {
                 job.id
             ));
         }
-
         Ok(output_path)
     }
 
     pub async fn upload_job_output(&self, job: &Job, output_path: &Path) -> Result<()> {
-        let delivery = job
-            .delivery
-            .as_ref()
-            .context("job is missing delivery instructions")?;
-        let output_url = delivery
-            .output_url
-            .as_ref()
-            .context("job is missing delivery output_url")?;
-
-        let filename = delivery
-            .filename
-            .as_deref()
-            .map(sanitize_filename)
-            .unwrap_or_else(|| job.planned_delivery_filename());
-
         let file = fs::File::open(output_path)
             .await
             .with_context(|| format!("failed to open {}", output_path.display()))?;
         let stream = ReaderStream::new(file);
         let body = Body::wrap_stream(stream);
 
-        let filename_header = filename.clone();
-
         self.http
-            .post(Url::parse(output_url).context("delivery output_url is not a valid URL")?)
+            .post(Url::parse(&job.output_url).context("delivery output_url is not a valid URL")?)
             .header(header::CONTENT_TYPE, "application/octet-stream")
             .header(
                 header::CONTENT_DISPOSITION,
-                format!(r#"attachment; filename="{filename}""#),
+                format!("attachment; filename=\"{}\"", job.filename),
             )
-            .header("X-Output-Filename", filename_header)
+            .header("X-Output-Filename", job.filename.clone())
             .body(body)
             .send()
             .await
             .with_context(|| format!("failed to upload output for job {}", job.id))?
             .error_for_status()
             .with_context(|| format!("output upload rejected for job {}", job.id))?;
-
         Ok(())
     }
 
@@ -207,10 +188,10 @@ impl ServerClient {
     }
 
     #[allow(dead_code)]
-    pub async fn report_job_complete(&self, job: &Job, output_url: Option<&str>) -> Result<()> {
+    pub async fn report_job_complete(&self, job: &Job) -> Result<()> {
         let body = JobCompleteRequest {
             worker_id: &self.config.worker_id,
-            output_url,
+            output_url: &job.output_url,
         };
 
         self.http
@@ -242,21 +223,6 @@ impl ServerClient {
             .with_context(|| format!("failed callback rejected for job {}", job.id))?;
 
         Ok(())
-    }
-
-    fn resolve_filename(&self, job: &Job) -> Result<String> {
-        if let Some(filename) = &job.filename {
-            return Ok(sanitize_filename(filename));
-        }
-
-        let url = Url::parse(&job.input_url).context("job input_url is not a valid URL")?;
-        let candidate = url
-            .path_segments()
-            .and_then(|segments| segments.last())
-            .filter(|segment| !segment.is_empty())
-            .unwrap_or("input.bin");
-
-        Ok(sanitize_filename(candidate))
     }
 
     fn build_ffmpeg_parts(&self, job: &Job, input_path: &Path, output_path: &Path) -> Vec<String> {
@@ -310,25 +276,4 @@ fn shell_quote(value: &str) -> String {
     }
 
     format!("'{}'", value.replace('\'', r"'\''"))
-}
-
-fn sanitize_filename(name: &str) -> String {
-    let trimmed = Path::new(name)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("input.bin");
-
-    let cleaned: String = trimmed
-        .chars()
-        .map(|ch| match ch {
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
-            _ => ch,
-        })
-        .collect();
-
-    if cleaned.is_empty() {
-        "input.bin".to_string()
-    } else {
-        cleaned
-    }
 }

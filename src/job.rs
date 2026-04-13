@@ -9,10 +9,12 @@ pub enum JobResponse {
 
 impl JobResponse {
     pub fn into_job(self) -> Job {
-        match self {
+        let mut job = match self {
             Self::Direct(job) => job,
             Self::Wrapped { job } => job,
-        }
+        };
+        job.filename = sanitize_filename(&job.filename);
+        return job;
     }
 }
 
@@ -21,11 +23,11 @@ pub struct Job {
     pub id: String,
     pub input_url: String,
     #[serde(default)]
-    pub filename: Option<String>,
-    #[serde(default)]
     pub transcode: Option<TranscodeSpec>,
     #[serde(default)]
-    pub delivery: Option<DeliverySpec>,
+    pub output_url: String,
+    #[serde(default)]
+    pub filename: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -65,41 +67,9 @@ impl TranscodeSpec {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct DeliverySpec {
-    #[serde(default)]
-    pub output_url: Option<String>,
-    #[serde(default)]
-    pub filename: Option<String>,
-}
-
-impl DeliverySpec {
-    pub fn summary(&self) -> String {
-        let mut parts = Vec::new();
-
-        if let Some(value) = &self.output_url {
-            parts.push(format!("output_url={value}"));
-        }
-        if let Some(value) = &self.filename {
-            parts.push(format!("filename={value}"));
-        }
-
-        if parts.is_empty() {
-            "no delivery spec".to_string()
-        } else {
-            parts.join(", ")
-        }
-    }
-}
-
 impl Job {
     pub fn planned_input_path(&self, work_dir: &std::path::Path) -> std::path::PathBuf {
-        let filename = self
-            .filename
-            .as_deref()
-            .map(sanitize_filename)
-            .unwrap_or_else(|| "input.bin".to_string());
-        work_dir.join(&self.id).join(filename)
+        work_dir.join(&self.id).join(self.filename.clone())
     }
 
     pub fn planned_output_path(&self, work_dir: &std::path::Path) -> std::path::PathBuf {
@@ -108,21 +78,8 @@ impl Job {
             .join(self.planned_staging_output_filename())
     }
 
-    pub fn planned_delivery_filename(&self) -> String {
-        if let Some(delivery) = &self.delivery {
-            if let Some(filename) = &delivery.filename {
-                return sanitize_filename(filename);
-            }
-        }
-
-        self.filename
-            .as_deref()
-            .map(output_name_from_input)
-            .unwrap_or_else(|| "output.bin".to_string())
-    }
-
     pub fn planned_staging_output_filename(&self) -> String {
-        let delivery_filename = self.planned_delivery_filename();
+        let delivery_filename = self.filename.clone();
         if let Some((stem, extension)) = delivery_filename.rsplit_once('.') {
             format!("{stem}.transcoded.{extension}")
         } else {
@@ -135,8 +92,7 @@ impl Job {
 #[derive(Debug, Clone, Serialize)]
 pub struct JobCompleteRequest<'a> {
     pub worker_id: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_url: Option<&'a str>,
+    pub output_url: &'a str,
 }
 
 #[allow(dead_code)]
@@ -164,14 +120,5 @@ fn sanitize_filename(name: &str) -> String {
         "input.bin".to_string()
     } else {
         cleaned
-    }
-}
-
-fn output_name_from_input(name: &str) -> String {
-    let sanitized = sanitize_filename(name);
-    if let Some((stem, _)) = sanitized.rsplit_once('.') {
-        format!("{stem}.mp4")
-    } else {
-        format!("{sanitized}.mp4")
     }
 }
