@@ -96,7 +96,10 @@ async fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
     let input_path = match client.receive_job_file(job).await {
         Ok(path) => path,
         Err(err) => {
-            eprintln!("Failed to download job {}: {err:#}", job.id);
+            eprintln!(
+                "Failed to download job {} from {}: {err:#}",
+                job.id, job.input_url
+            );
             fail_and_cleanup(client, job, "download failed").await;
             return Ok(());
         }
@@ -114,8 +117,9 @@ async fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         .unwrap_or_else(|| "no delivery spec".to_string());
 
     println!(
-        "Received job {} -> {} [{}; {}]",
+        "Received job {} from {} -> {} [{}; {}]",
         job.id,
+        job.input_url,
         input_path.display(),
         transcode,
         delivery
@@ -124,7 +128,10 @@ async fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
     let output_path = match client.transcode_job_file(job, &input_path).await {
         Ok(path) => path,
         Err(err) => {
-            eprintln!("Failed to transcode job {}: {err:#}", job.id);
+            eprintln!(
+                "Failed to transcode job {} from {}: {err:#}",
+                job.id, job.input_url
+            );
             fail_and_cleanup(client, job, "transcode failed").await;
             return Ok(());
         }
@@ -138,7 +145,10 @@ async fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         .and_then(|delivery| delivery.output_url.as_deref())
     {
         if let Err(err) = client.upload_job_output(job, &output_path).await {
-            eprintln!("Failed to upload job {} output: {err:#}", job.id);
+            eprintln!(
+                "Failed to upload job {} from {} output: {err:#}",
+                job.id, job.input_url
+            );
             fail_and_cleanup(client, job, "upload failed").await;
             return Ok(());
         }
@@ -156,7 +166,10 @@ async fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         .as_ref()
         .and_then(|delivery| delivery.output_url.as_deref());
     if let Err(err) = client.report_job_complete(job, output_url).await {
-        eprintln!("Failed to report completion for job {}: {err:#}", job.id);
+        eprintln!(
+            "Failed to report completion for job {} from {}: {err:#}",
+            job.id, job.input_url
+        );
         if let Err(cleanup_err) = client.cleanup_job_files(job).await {
             eprintln!("Failed to clean up job {} files: {cleanup_err:#}", job.id);
         } else {
@@ -177,8 +190,8 @@ async fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
 async fn fail_and_cleanup(client: &ServerClient, job: &Job, reason: &str) {
     if let Err(err) = client.report_job_failed(job, reason).await {
         eprintln!(
-            "Failed to report failure for job {} after {reason}: {err:#}",
-            job.id
+            "Failed to report failure for job {} from {} after {reason}: {err:#}",
+            job.id, job.input_url
         );
     }
 
