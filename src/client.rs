@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse},
+    job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse, TranscodeSpec},
 };
 use anyhow::{Context, Result};
 use reqwest::{Client, StatusCode, header};
@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
-use tokio::{fs, io::AsyncWriteExt};
+use tokio::{fs, io::AsyncWriteExt, process::Command};
 use url::Url;
 
 pub struct ServerClient {
@@ -106,6 +106,53 @@ impl ServerClient {
         Ok(final_path)
     }
 
+    pub fn build_debug_ffmpeg_command(&self, job: &Job) -> String {
+        let input_path = job.planned_input_path(&self.config.work_dir);
+        let output_path = job.planned_output_path(&self.config.work_dir);
+        let parts = self.build_ffmpeg_parts(job, &input_path, &output_path);
+
+        let mut command_parts = vec![shell_quote(&self.config.ffmpeg_bin)];
+        command_parts.extend(parts.iter().map(|part| shell_quote(part)));
+        command_parts.join(" ")
+    }
+
+    pub async fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
+        let output_path = job.planned_output_path(&self.config.work_dir);
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+
+        let mut command = Command::new(&self.config.ffmpeg_bin);
+        command.args(self.build_ffmpeg_parts(job, input_path, &output_path));
+        command
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit());
+
+        println!(
+            "Running ffmpeg for job {}: {}",
+            job.id,
+            self.build_debug_ffmpeg_command(job)
+        );
+
+        let status = command
+            .status()
+            .await
+            .with_context(|| format!("failed to launch {}", self.config.ffmpeg_bin))?;
+
+        if !status.success() {
+            return Err(anyhow::anyhow!(
+                "ffmpeg exited with status {} for job {}",
+                status,
+                job.id
+            ));
+        }
+
+        Ok(output_path)
+    }
+
     #[allow(dead_code)]
     pub async fn report_job_complete(&self, job: &Job, output_url: Option<&str>) -> Result<()> {
         let body = JobCompleteRequest {
@@ -158,6 +205,58 @@ impl ServerClient {
 
         Ok(sanitize_filename(candidate))
     }
+
+    fn build_ffmpeg_parts(&self, job: &Job, input_path: &Path, output_path: &Path) -> Vec<String> {
+        let mut parts = vec![
+            "-hide_banner".to_string(),
+            "-y".to_string(),
+            "-i".to_string(),
+            input_path.display().to_string(),
+        ];
+
+        if let Some(spec) = &job.transcode {
+            append_transcode_args(&mut parts, spec);
+        }
+
+        parts.push(output_path.display().to_string());
+        parts
+    }
+}
+
+fn append_transcode_args(parts: &mut Vec<String>, spec: &TranscodeSpec) {
+    if let Some(value) = &spec.quality {
+        parts.push("-crf".to_string());
+        parts.push(value.clone());
+    }
+
+    if let Some(value) = &spec.video_codec {
+        parts.push("-c:v".to_string());
+        parts.push(value.clone());
+    }
+
+    if let Some(value) = &spec.audio_codec {
+        parts.push("-c:a".to_string());
+        parts.push(value.clone());
+    }
+
+    for arg in &spec.ffmpeg_args {
+        parts.push(arg.clone());
+    }
+}
+
+fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '+'))
+    {
+        return value.to_string();
+    }
+
+    format!("'{}'", value.replace('\'', r"'\''"))
 }
 
 fn sanitize_filename(name: &str) -> String {

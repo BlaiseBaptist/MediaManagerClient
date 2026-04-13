@@ -92,6 +92,34 @@ impl DeliverySpec {
     }
 }
 
+impl Job {
+    pub fn planned_input_path(&self, work_dir: &std::path::Path) -> std::path::PathBuf {
+        let filename = self
+            .filename
+            .as_deref()
+            .map(sanitize_filename)
+            .unwrap_or_else(|| "input.bin".to_string());
+        work_dir.join(&self.id).join(filename)
+    }
+
+    pub fn planned_output_path(&self, work_dir: &std::path::Path) -> std::path::PathBuf {
+        work_dir.join(&self.id).join(self.planned_output_filename())
+    }
+
+    pub fn planned_output_filename(&self) -> String {
+        if let Some(delivery) = &self.delivery {
+            if let Some(filename) = &delivery.filename {
+                return sanitize_filename(filename);
+            }
+        }
+
+        self.filename
+            .as_deref()
+            .map(output_name_from_input)
+            .unwrap_or_else(|| "output.bin".to_string())
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct JobCompleteRequest<'a> {
@@ -105,4 +133,34 @@ pub struct JobCompleteRequest<'a> {
 pub struct JobFailedRequest<'a> {
     pub worker_id: &'a str,
     pub error: &'a str,
+}
+
+fn sanitize_filename(name: &str) -> String {
+    let trimmed = std::path::Path::new(name)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("input.bin");
+
+    let cleaned: String = trimmed
+        .chars()
+        .map(|ch| match ch {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            _ => ch,
+        })
+        .collect();
+
+    if cleaned.is_empty() {
+        "input.bin".to_string()
+    } else {
+        cleaned
+    }
+}
+
+fn output_name_from_input(name: &str) -> String {
+    let sanitized = sanitize_filename(name);
+    if let Some((stem, _)) = sanitized.rsplit_once('.') {
+        format!("{stem}.mp4")
+    } else {
+        format!("{sanitized}.mp4")
+    }
 }

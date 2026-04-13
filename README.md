@@ -9,9 +9,12 @@ The client:
 1. polls the server for the next job
 2. downloads the file from the job's `input_url`
 3. stores the file under `MEDIA_MANAGER_WORK_DIR/<job.id>/`
-4. logs any transcode and delivery instructions it receives
+4. runs `ffmpeg` using the transcode instructions it receives
+5. writes the output file under `MEDIA_MANAGER_WORK_DIR/<job.id>/`
 
-It does **not** transcode yet and it does **not** call `complete` yet.
+It still does **not** call `complete` yet.
+
+If `MEDIA_MANAGER_DEBUG_DRY_RUN` is enabled, the client claims one job, prints the FFmpeg command it would run, marks the job failed with a debug note, and exits without downloading anything.
 
 ## Environment variables
 
@@ -38,6 +41,12 @@ It does **not** transcode yet and it does **not** call `complete` yet.
 
 - `MEDIA_MANAGER_AUTH_TOKEN`  
   Optional. If set, the client sends `Authorization: Bearer <token>` on requests
+
+- `MEDIA_MANAGER_FFMPEG_BIN`  
+  Optional. Defaults to `ffmpeg`
+
+- `MEDIA_MANAGER_DEBUG_DRY_RUN`  
+  Optional. If set to `1`, `true`, `yes`, or `on`, enables the one-shot debug mode described above
 
 ## Job claim endpoint
 
@@ -104,7 +113,7 @@ The client expects this shape:
 
 ## `transcode` block
 
-The client currently stores these values and logs them for visibility.
+The client uses these values to build the FFmpeg command.
 
 ```json
 {
@@ -131,7 +140,7 @@ The client currently stores these values and logs them for visibility.
 
 ## `delivery` block
 
-The client currently stores these values and logs them for visibility.
+The client uses these values to choose the output filename and logs them for visibility.
 
 ```json
 {
@@ -188,5 +197,5 @@ Body:
 
 - Unknown JSON fields are ignored by the client.
 - `id` and `input_url` should be present for every job.
-- The client downloads the file immediately after job claim and writes it to disk.
+- The client downloads the file immediately after job claim, then runs FFmpeg and writes the output to disk.
 - Completion reporting is not active yet, so the server should not depend on it.
