@@ -11,6 +11,7 @@ The client:
 3. stores the file under `MEDIA_MANAGER_WORK_DIR/<job.id>/`
 4. runs `ffmpeg` using the transcode instructions it receives
 5. writes the output file under `MEDIA_MANAGER_WORK_DIR/<job.id>/`
+6. uploads the output file to `delivery.output_url`
 
 It still does **not** call `complete` yet.
 
@@ -112,7 +113,7 @@ The client expects this shape:
   FFmpeg instructions. If omitted, the client still accepts the job.
 
 - `delivery`  
-  Output target instructions. If omitted, the client still accepts the job.
+  Output target instructions. If omitted, the client still accepts the job but skips upload.
 
 ## `transcode` block
 
@@ -153,7 +154,7 @@ The client uses these values to choose the output filename and logs them for vis
 ```
 
 - `output_url`
-  - where the finished file should eventually be sent
+  - where the finished file should be uploaded after FFmpeg completes
 
 - `filename`
   - suggested filename for the final output artifact
@@ -200,5 +201,5 @@ Body:
 
 - Unknown JSON fields are ignored by the client.
 - `id` and `input_url` should be present for every job.
-- The client downloads the file immediately after job claim, then runs FFmpeg and writes the output to disk.
+- The client downloads the file immediately after job claim, then runs FFmpeg, writes the output to disk, and uploads it to `delivery.output_url` when provided.
 - Completion reporting is not active yet, so the server should not depend on it.

@@ -3,12 +3,14 @@ use crate::{
     job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse, TranscodeSpec},
 };
 use anyhow::{Context, Result};
-use reqwest::{Client, StatusCode, header};
+use reqwest::{Body, Client, StatusCode, header};
 use std::{
+    io::ErrorKind,
     path::{Path, PathBuf},
     time::Duration,
 };
 use tokio::{fs, io::AsyncWriteExt, process::Command};
+use tokio_util::io::ReaderStream;
 use url::Url;
 
 pub struct ServerClient {
@@ -152,6 +154,63 @@ impl ServerClient {
         }
 
         Ok(output_path)
+    }
+
+    pub async fn upload_job_output(&self, job: &Job, output_path: &Path) -> Result<()> {
+        let delivery = job
+            .delivery
+            .as_ref()
+            .context("job is missing delivery instructions")?;
+        let output_url = delivery
+            .output_url
+            .as_ref()
+            .context("job is missing delivery output_url")?;
+
+        let filename = delivery
+            .filename
+            .as_deref()
+            .map(sanitize_filename)
+            .unwrap_or_else(|| {
+                output_path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(sanitize_filename)
+                    .unwrap_or_else(|| "output.bin".to_string())
+            });
+
+        let file = fs::File::open(output_path)
+            .await
+            .with_context(|| format!("failed to open {}", output_path.display()))?;
+        let stream = ReaderStream::new(file);
+        let body = Body::wrap_stream(stream);
+
+        let filename_header = filename.clone();
+
+        self.http
+            .post(Url::parse(output_url).context("delivery output_url is not a valid URL")?)
+            .header(header::CONTENT_TYPE, "application/octet-stream")
+            .header(
+                header::CONTENT_DISPOSITION,
+                format!(r#"attachment; filename="{filename}""#),
+            )
+            .header("X-Output-Filename", filename_header)
+            .body(body)
+            .send()
+            .await
+            .with_context(|| format!("failed to upload output for job {}", job.id))?
+            .error_for_status()
+            .with_context(|| format!("output upload rejected for job {}", job.id))?;
+
+        Ok(())
+    }
+
+    pub async fn cleanup_job_files(&self, job: &Job) -> Result<()> {
+        let job_dir = self.config.work_dir.join(&job.id);
+        match fs::remove_dir_all(&job_dir).await {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(err).with_context(|| format!("failed to remove {}", job_dir.display())),
+        }
     }
 
     #[allow(dead_code)]
