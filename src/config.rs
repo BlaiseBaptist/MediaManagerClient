@@ -14,6 +14,7 @@ pub struct Config {
     pub work_dir: PathBuf,
     pub auth_token: Option<String>,
     pub allow_insecure_tls: bool,
+    pub force_http1: bool,
     pub debug_dry_run: bool,
 }
 
@@ -56,6 +57,11 @@ impl Config {
             .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
             .unwrap_or(false);
 
+        let force_http1 = env::var("MEDIA_MANAGER_FORCE_HTTP1")
+            .ok()
+            .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(true);
+
         let debug_dry_run = env::var("MEDIA_MANAGER_DEBUG_DRY_RUN")
             .ok()
             .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
@@ -72,6 +78,7 @@ impl Config {
             work_dir,
             auth_token,
             allow_insecure_tls,
+            force_http1,
             debug_dry_run,
         })
     }

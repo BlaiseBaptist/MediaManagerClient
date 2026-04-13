@@ -29,12 +29,16 @@ impl ServerClient {
             headers.insert(header::AUTHORIZATION, value);
         }
 
-        let http = Client::builder()
+        let mut builder = Client::builder()
             .default_headers(headers)
             .danger_accept_invalid_certs(config.allow_insecure_tls)
-            .timeout(Duration::from_secs(300))
-            .build()
-            .context("failed to build HTTP client")?;
+            .timeout(Duration::from_secs(300));
+
+        if config.force_http1 {
+            builder = builder.http1_only();
+        }
+
+        let http = builder.build().context("failed to build HTTP client")?;
 
         Ok(Self { http, config })
     }

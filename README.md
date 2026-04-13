@@ -46,6 +46,9 @@ If `MEDIA_MANAGER_DEBUG_DRY_RUN` is enabled, the client claims one job, prints t
 - `MEDIA_MANAGER_ALLOW_INSECURE_TLS`  
   Optional. If set to `1`, `true`, `yes`, or `on`, the client accepts self-signed or otherwise untrusted HTTPS certificates
 
+- `MEDIA_MANAGER_FORCE_HTTP1`  
+  Optional. Defaults to `1`. Forces the HTTP client to use HTTP/1.1, which can help if the server or proxy resets large HTTP/2 downloads
+
 - `MEDIA_MANAGER_FFMPEG_BIN`  
   Optional. Defaults to `ffmpeg`
 
