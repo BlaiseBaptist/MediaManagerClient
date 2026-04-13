@@ -61,7 +61,6 @@ impl ServerClient {
             .await
             .context("failed to decode job response")?
             .into_job();
-        println!("input url: {:?}", job);
         Ok(Some(job))
     }
 
@@ -73,7 +72,6 @@ impl ServerClient {
 
         let final_path = job_dir.join(job.filename.clone());
         let temp_path = final_path.with_extension("part");
-
         let mut response = self
             .http
             .get(Url::parse(&job.input_url).context("job input_url is not a valid URL")?)
@@ -87,6 +85,7 @@ impl ServerClient {
             .await
             .with_context(|| format!("failed to create {}", temp_path.display()))?;
 
+        println!("DEBUG:  getting file at {}", job.input_url);
         while let Some(chunk) = response
             .chunk()
             .await
@@ -97,6 +96,7 @@ impl ServerClient {
                 .with_context(|| format!("failed to write {}", temp_path.display()))?;
         }
 
+        println!("DEBUG: recieved file at {}", job.input_url);
         file.flush()
             .await
             .with_context(|| format!("failed to flush {}", temp_path.display()))?;

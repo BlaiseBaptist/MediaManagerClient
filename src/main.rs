@@ -13,15 +13,6 @@ async fn main() -> Result<()> {
     let config = Config::from_env()?;
     let client = ServerClient::new(config.clone())?;
 
-    println!(
-        "Polling {} for jobs as worker {}",
-        config.job_url(),
-        config.worker_id
-    );
-    println!(
-        "Lifecycle callbacks configured: complete={}, failed={}",
-        config.complete_path, config.failed_path
-    );
     if config.debug_dry_run {
         println!("Debug dry run mode enabled");
     }

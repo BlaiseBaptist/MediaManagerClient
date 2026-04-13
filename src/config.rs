@@ -47,7 +47,7 @@ impl Config {
 
         let work_dir = env::var("MEDIA_MANAGER_WORK_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("./work"));
+            .unwrap_or_else(|_| PathBuf::from("./.work"));
 
         let auth_token = env::var("MEDIA_MANAGER_AUTH_TOKEN").ok();
 
