@@ -13,6 +13,7 @@ pub struct Config {
     pub poll_interval: Duration,
     pub work_dir: PathBuf,
     pub auth_token: Option<String>,
+    pub allow_insecure_tls: bool,
     pub debug_dry_run: bool,
 }
 
@@ -50,6 +51,11 @@ impl Config {
 
         let auth_token = env::var("MEDIA_MANAGER_AUTH_TOKEN").ok();
 
+        let allow_insecure_tls = env::var("MEDIA_MANAGER_ALLOW_INSECURE_TLS")
+            .ok()
+            .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(false);
+
         let debug_dry_run = env::var("MEDIA_MANAGER_DEBUG_DRY_RUN")
             .ok()
             .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
@@ -65,6 +71,7 @@ impl Config {
             poll_interval,
             work_dir,
             auth_token,
+            allow_insecure_tls,
             debug_dry_run,
         })
     }

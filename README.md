@@ -19,7 +19,7 @@ If `MEDIA_MANAGER_DEBUG_DRY_RUN` is enabled, the client claims one job, prints t
 ## Environment variables
 
 - `MEDIA_MANAGER_SERVER_URL`  
-  Required. Base URL of the Django server, for example `http://localhost:8000`
+  Required. Base URL of the Django server, for example `https://localhost:8000`
 
 - `MEDIA_MANAGER_JOB_PATH`  
   Optional. Defaults to `/api/worker/jobs/next`
@@ -41,6 +41,9 @@ If `MEDIA_MANAGER_DEBUG_DRY_RUN` is enabled, the client claims one job, prints t
 
 - `MEDIA_MANAGER_AUTH_TOKEN`  
   Optional. If set, the client sends `Authorization: Bearer <token>` on requests
+
+- `MEDIA_MANAGER_ALLOW_INSECURE_TLS`  
+  Optional. If set to `1`, `true`, `yes`, or `on`, the client accepts self-signed or otherwise untrusted HTTPS certificates
 
 - `MEDIA_MANAGER_FFMPEG_BIN`  
   Optional. Defaults to `ffmpeg`

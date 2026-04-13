@@ -29,6 +29,7 @@ impl ServerClient {
 
         let http = Client::builder()
             .default_headers(headers)
+            .danger_accept_invalid_certs(config.allow_insecure_tls)
             .timeout(Duration::from_secs(300))
             .build()
             .context("failed to build HTTP client")?;
