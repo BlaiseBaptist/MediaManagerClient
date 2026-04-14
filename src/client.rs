@@ -86,13 +86,15 @@ impl ServerClient {
         }
         "rav1enc".to_string()
     }
+
     pub fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
         let abs_input = input_path.canonicalize()?;
-        let input_uri = format!(
-            "file://{}",
-            abs_input.to_str().context("Invalid input path")?
-        );
-        let output_path = input_path.with_file_name("archive_out.mkv");
+        let output_path = input_path.with_file_name("out.mkv");
+
+        // let input_uri = format!(
+        //     "file://{}",
+        //     abs_input.to_str().context("Invalid input path")?
+        // );
 
         let a_encoder = match job
             .transcode
@@ -110,25 +112,23 @@ impl ServerClient {
             Some("av1") | None => &Self::get_best_av1_encoder(),
             Some(other) => other,
         };
-        let quality_settings = match v_encoder {
+        let v_settings = match v_encoder {
             "svtav1enc" => "preset=4 crf=22 logical-processors=0",
-            "rav1enc" => "speed-preset=3 quantizer=70 threads=0 tile-rows=2",
-            "avenc_av1" => "cpu-used=3 row-mt=true threads=16 end-usage=vbr target-bitrate=0",
+            "rav1enc" => "speed-preset=3 quantizer=70 threads=0",
+            "avenc_av1" => "cpu-used=3 row-mt=true threads=16",
             _ => "",
         };
-        println!("encoder: {}", v_encoder);
-        let pipeline_str = format!(
-            "uridecodebin3 uri={uri} name=dbin \
-         matroskamux name=mux ! filesink location=\"{out}\" \
-         dbin. ! queue ! videoconvert n-threads=0 ! video/x-raw,format=I420_10LE ! queue ! {v_enc} {v_settings} ! queue ! mux. \
-         dbin. ! queue ! audioconvert ! audioresample ! {a_enc} ! queue ! mux.",
-            uri = input_uri,
-            out = output_path.to_str().context("Invalid output path")?,
-            v_enc = v_encoder,
-            v_settings = quality_settings,
-            a_enc = a_encoder
-        );
 
+        let pipeline_str = format!(
+            "uridecodebin3 uri=file://{input_path} name=dbin matroskamux name=mux ! filesink location={output_path} \
+         dbin. ! queue ! videoconvert ! video/x-raw,format=I420_10LE ! {v_encoder} {v_settings} ! mux. \
+         dbin. ! queue ! audioconvert ! audioresample ! {a_encoder} ! mux.",
+            input_path = abs_input.display(),
+            output_path = output_path.display(),
+            v_encoder = v_encoder,
+            v_settings = v_settings,
+            a_encoder = a_encoder
+        );
         let pipeline =
             gstreamer::parse::launch(&pipeline_str).context("Failed to parse pipeline")?;
         pipeline.set_state(gstreamer::State::Playing)?;
