@@ -14,7 +14,7 @@ impl JobResponse {
             Self::Wrapped { job } => job,
         };
         job.filename = sanitize_filename(&job.filename);
-        return job;
+        job
     }
 }
 

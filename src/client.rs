@@ -65,7 +65,7 @@ impl ServerClient {
                     .await
                     .with_context(|| format!("failed to write {}", temp_path.display()))?;
             }
-            return Ok::<(), anyhow::Error>(());
+            Ok::<(), anyhow::Error>(())
         })?;
         println!("DEBUG: recieved file at {}", job.input_url);
         std::fs::rename(&temp_path, &final_path)
@@ -171,7 +171,7 @@ impl ServerClient {
                 .with_context(|| format!("failed to upload output for job {}", job.id))?
                 .error_for_status()
                 .with_context(|| format!("output upload rejected for job {}", job.id))?;
-            return Ok::<(), anyhow::Error>(());
+            Ok::<(), anyhow::Error>(())
         })?;
         Ok(())
     }
