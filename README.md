@@ -85,17 +85,13 @@ The client expects this shape:
 {
   "id": "job-123",
   "input_url": "http://localhost:8000/api/media/jobs/job-123/input",
+  "output_url": "http://localhost:8000/api/worker/jobs/job-123/output",
   "filename": "input.mp4",
   "transcode": {
     "quality": "23",
-    "video_codec": "libx264",
-    "audio_codec": "aac",
-    "ffmpeg_args": ["-preset", "slow", "-movflags", "+faststart"]
+    "video_codec": "av1",
+    "audio_codec": "opus",
   },
-  "delivery": {
-    "output_url": "http://localhost:8000/api/worker/jobs/job-123/output",
-    "filename": "output.mp4"
-  }
 }
 ```
 
@@ -107,60 +103,14 @@ The client expects this shape:
 - `input_url`  
   URL to download the source file from.
 
-### Optional fields
+- `output_url`
+  - where the finished file should be uploaded after FFmpeg completes
 
 - `filename`  
   Suggested local filename for the downloaded input.
 
 - `transcode`  
   FFmpeg instructions. If omitted, the client still accepts the job.
-
-- `delivery`  
-  Output target instructions. If omitted, the client still accepts the job but skips upload.
-
-## `transcode` block
-
-The client uses these values to build the FFmpeg command.
-
-```json
-{
-  "quality": "23",
-  "video_codec": "libx264",
-  "audio_codec": "aac",
-  "ffmpeg_args": ["-preset", "slow"]
-}
-```
-
-- `quality`
-  - free-form quality selector
-  - can map to CRF, bitrate, or any server-side convention you choose
-
-- `video_codec`
-  - example values: `libx264`, `libx265`, `h264_nvenc`
-
-- `audio_codec`
-  - example values: `aac`, `libopus`, `copy`
-
-- `ffmpeg_args`
-  - extra FFmpeg CLI arguments in order
-  - example: `["-preset", "slow", "-movflags", "+faststart"]`
-
-## `delivery` block
-
-The client uses these values to choose the output filename and logs them for visibility.
-
-```json
-{
-  "output_url": "http://localhost:8000/api/worker/jobs/job-123/output",
-  "filename": "output.mp4"
-}
-```
-
-- `output_url`
-  - where the finished file should be uploaded after FFmpeg completes
-
-- `filename`
-  - suggested filename for the final output artifact
 
 ## Lifecycle callbacks
 
@@ -169,24 +119,10 @@ The client has callback methods prepared for future use.
 ### Complete
 
 ```http
-POST /api/worker/jobs/{job_id}/complete
-Content-Type: application/json
+PUT {output_url}
 ```
 
-Body:
-
-```json
-{
-  "worker_id": "worker-123",
-  "output_url": "http://localhost:8000/api/worker/jobs/job-123/output"
-}
 ```
-
-`output_url` is optional.
-
-### Failed
-
-```http
 POST /api/worker/jobs/{job_id}/failed
 Content-Type: application/json
 ```

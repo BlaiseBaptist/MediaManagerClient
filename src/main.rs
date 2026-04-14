@@ -47,7 +47,6 @@ async fn run(client: ServerClient, config: Config) -> Result<()> {
                         job.planned_output_path(&config.work_dir).display()
                     );
                     println!("  transcode: {}", transcode);
-                    // println!("  delivery: {}", delivery);
                     println!("  command: {command}");
 
                     let reason =
