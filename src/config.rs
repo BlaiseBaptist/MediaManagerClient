@@ -8,11 +8,8 @@ pub struct Config {
     pub job_path: String,
     pub complete_path: String,
     pub failed_path: String,
-    pub worker_id: String,
     pub poll_interval: Duration,
     pub work_dir: PathBuf,
-    pub auth_token: Option<String>,
-    pub allow_insecure_tls: bool,
 }
 
 impl Config {
@@ -31,9 +28,6 @@ impl Config {
         let failed_path = env::var("MEDIA_MANAGER_FAILED_PATH")
             .unwrap_or_else(|_| "/api/worker/jobs/{job_id}/failed".to_string());
 
-        let worker_id = env::var("MEDIA_MANAGER_WORKER_ID")
-            .unwrap_or_else(|_| format!("worker-{}", std::process::id()));
-
         let poll_interval = env::var("MEDIA_MANAGER_POLL_INTERVAL_SECS")
             .ok()
             .and_then(|value| value.parse::<u64>().ok())
@@ -44,23 +38,13 @@ impl Config {
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("./.work"));
 
-        let auth_token = env::var("MEDIA_MANAGER_AUTH_TOKEN").ok();
-
-        let allow_insecure_tls = env::var("MEDIA_MANAGER_ALLOW_INSECURE_TLS")
-            .ok()
-            .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-            .unwrap_or(false);
-
         Ok(Self {
             server_base_url,
             job_path,
             complete_path,
             failed_path,
-            worker_id,
             poll_interval,
             work_dir,
-            auth_token,
-            allow_insecure_tls,
         })
     }
 

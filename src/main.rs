@@ -16,7 +16,7 @@ fn main() {
     let config = Config::from_env().unwrap();
     let client = ServerClient::new(config.clone()).unwrap();
 
-    run(client, config);
+    run(client, config).unwrap();
 }
 
 fn run(client: ServerClient, config: Config) -> Result<()> {

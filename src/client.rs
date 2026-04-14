@@ -172,7 +172,7 @@ impl ServerClient {
         Ok(output_path)
     }
 
-    pub fn upload_job_output(&self, job: &Job, output_path: &Path) -> Result<()> {
+    pub fn upload_job_output(&self, _job: &Job, _output_path: &Path) -> Result<()> {
         // let file = fs::File::open(output_path).await
         //     .with_context(|| format!("failed to open {}", output_path.display()))?;
         // let stream = ReaderStream::new(file);
