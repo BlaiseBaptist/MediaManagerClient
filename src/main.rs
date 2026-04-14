@@ -5,11 +5,16 @@ mod job;
 use anyhow::Result;
 use client::ServerClient;
 use config::Config;
+use gstreamer as gst;
 use job::Job;
 use tokio::signal;
-
 #[tokio::main]
 async fn main() -> Result<()> {
+    // 1. GLOBAL INITIALIZATION (Do this once)
+    gst::init().expect("Failed to initialize GStreamer");
+
+    // 2. REGISTER STATIC PLUGINS (Must be after init)
+    gstrav1e::plugin_register_static().expect("Failed to bundle rav1e plugin");
     let config = Config::from_env()?;
     let client = ServerClient::new(config.clone())?;
 

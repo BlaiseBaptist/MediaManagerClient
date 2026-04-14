@@ -3,7 +3,6 @@ use crate::{
     job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse},
 };
 use anyhow::{Context, Result};
-use gstrav1e;
 use gstreamer::prelude::*;
 use reqwest::{Body, Client, StatusCode, header};
 use std::{
@@ -128,63 +127,58 @@ impl ServerClient {
         "rav1enc".to_string()
     }
     pub async fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
-        gstreamer::init()?;
-        gstrav1e::plugin_register_static().expect("Failed to bundle rav1e plugin");
-        let output_path = input_path.with_file_name("out.mkv");
-        let spec = job.transcode.as_ref();
-        // Map video codec: default to rav1e (av1enc)
-        let v_encoder = match spec.and_then(|s| s.video_codec.as_deref()) {
-            Some("av1") | None => &Self::get_best_av1_encoder(),
-            Some(other) => other, // Try to use the string directly if provided
-        };
+        let abs_input = input_path.canonicalize()?;
+        let input_uri = format!(
+            "file://{}",
+            abs_input.to_str().context("Invalid input path")?
+        );
+        let output_path = input_path.with_file_name("archive_out.mkv");
 
-        // Map audio codec: default to opus
-        let a_encoder = match spec.and_then(|s| s.audio_codec.as_deref()) {
-            Some("opus") | None => "opusenc",
+        let v_encoder = match job
+            .transcode
+            .as_ref()
+            .and_then(|s| s.video_codec.as_deref())
+        {
+            Some("av1") | None => &Self::get_best_av1_encoder(),
             Some(other) => other,
         };
+
+        // ARCHIVAL CONFIGURATION
+        // These settings prioritize quality (CRF/Quantizer) and ensure multi-core utilization via threading/tiles.
         let quality_settings = match v_encoder {
-            "vaapiav1enc" => "target-usage=4", // VAAPI uses target-usage (1-7)
-            "svtav1enc" => "preset=8 crf=30",
-            "rav1enc" => "speed-preset=4 quantizer=80",
-            "avenc_av1" => "cpu-used=4", // libaom settings
+            "svtav1enc" => "preset=4 crf=22 logical-processors=0",
+            "rav1enc" => "speed-preset=3 quantizer=70 threads=0 tile-columns=2 tile-rows=2",
+            "avenc_av1" => "cpu-used=3 row-mt=true threads=16 end-usage=vbr target-bitrate=0",
             _ => "",
         };
-        // 4. Construct the Pipeline String
-        // We use 'decodebin' to handle any input format and 'matroskamux' for the .mkv container
+
+        // PIPELINE OPTIMIZATION
+        // 1. uridecodebin3: Better performance and more stable for modern formats.
+        // 2. n-threads=0: Parallelizes the intensive color-space conversion.
+        // 3. Audio: Archival usually warrants FLAC (lossless) or high-bitrate Opus.
         let pipeline_str = format!(
-            "filesrc location=\"{}\" ! decodebin force-sw-decoders=true name=dbin \
-         matroskamux name=mux ! filesink location=\"{}\" \
-         dbin. ! queue ! videoconvert ! {} {} ! mux. \
-         dbin. ! queue ! audioconvert ! audioresample ! {} ! mux.",
-            input_path.to_str().context("Invalid input path")?,
-            output_path.to_str().context("Invalid output path")?,
-            v_encoder,
-            quality_settings,
-            a_encoder
+            "uridecodebin3 uri={uri} name=dbin \
+         matroskamux name=mux ! filesink location=\"{out}\" \
+         dbin. ! queue max-size-buffers=2 ! videoconvert n-threads=0 ! queue ! {enc} {settings} ! queue ! mux. \
+         dbin. ! queue ! audioconvert ! audioresample ! opusenc bitrate=256000 ! mux.",
+            uri = input_uri,
+            out = output_path.to_str().context("Invalid output path")?,
+            enc = v_encoder,
+            settings = quality_settings
         );
 
-        // 5. Run the Pipeline
-        let pipeline = gstreamer::parse::launch(&pipeline_str)
-            .context("Failed to parse gstreamerreamer pipeline string")?;
-
+        let pipeline =
+            gstreamer::parse::launch(&pipeline_str).context("Failed to parse pipeline")?;
         pipeline.set_state(gstreamer::State::Playing)?;
 
-        // 6. Wait for Completion (EOS) or Error
-        let bus = pipeline.bus().context("Failed to get pipeline bus")?;
-
-        // In a real async app, you'd use a stream, but for a job file, a sync loop is fine
+        let bus = pipeline.bus().context("No bus")?;
         for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
             use gstreamer::MessageView;
             match msg.view() {
                 MessageView::Eos(..) => break,
                 MessageView::Error(err) => {
                     pipeline.set_state(gstreamer::State::Null)?;
-                    return Err(anyhow::anyhow!(
-                        "GStreamer Error: {} ({})",
-                        err.error(),
-                        err.debug().unwrap_or_else(|| "no debug info".into())
-                    ));
+                    return Err(anyhow::anyhow!("GStreamer Error: {}", err.error()));
                 }
                 _ => (),
             }
