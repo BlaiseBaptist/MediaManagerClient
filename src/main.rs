@@ -73,6 +73,13 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
     };
     println!("Transcoded job {} -> {}", job.id, output_path.display());
 
+    if let Err(err) = client.upload_job_output(job, &output_path) {
+        eprintln!("Failed to upload job {} files: {err:#}", job.id);
+        fail_and_cleanup(client, job, &err.to_string());
+        return Ok(());
+    } else {
+        println!("Cleaned uploaded files for job {}", job.id);
+    }
     if let Err(err) = client.report_job_complete(job) {
         eprintln!(
             "Failed to report completion for job {} from {}: {err:#}",
@@ -85,12 +92,6 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         }
         return Ok(());
     }
-    if let Err(err) = client.upload_job_output(job, &output_path) {
-        eprintln!("Failed to clean up job {} files: {err:#}", job.id);
-    } else {
-        println!("Cleaned up local files for job {}", job.id);
-    }
-
     if let Err(err) = client.cleanup_job_files(job) {
         eprintln!("Failed to clean up job {} files: {err:#}", job.id);
     } else {
