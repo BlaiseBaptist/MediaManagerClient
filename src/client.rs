@@ -89,11 +89,6 @@ impl ServerClient {
         let abs_input = input_path.canonicalize()?;
         let output_path = input_path.with_file_name("out.mkv");
 
-        // let input_uri = format!(
-        //     "file://{}",
-        //     abs_input.to_str().context("Invalid input path")?
-        // );
-
         let a_encoder = match job
             .transcode
             .as_ref()
