@@ -106,21 +106,25 @@ impl ServerClient {
             Some(other) => other,
         };
         let v_settings = match v_encoder {
-            "svtav1enc" => "preset=4 crf=22 logical-processors=0",
+            // "svtav1enc" => "preset=4 crf=22 logical-processors=0",
+            "svtav1enc" => "preset=8 crf=30 logical-processors=0",
             "rav1enc" => "speed-preset=3 quantizer=70 threads=0",
             "avenc_av1" => "cpu-used=3 row-mt=true threads=16",
             _ => "",
         };
-
         let pipeline_str = format!(
-            "uridecodebin3 uri=file://{input_path} name=dbin matroskamux name=mux ! filesink location={output_path} \
-         dbin. ! queue ! videoconvert ! video/x-raw,format=I420_10LE ! {v_encoder} {v_settings} ! mux. \
-         dbin. ! queue ! audioconvert ! audioresample ! {a_encoder} ! mux.",
+            "uridecodebin3 uri=file://{input_path} name=dbin \
+            matroskamux name=mux ! filesink location=\"{output_path}\" \
+            dbin. ! queue name=v_queue max-size-buffers=5000 max-size-bytes=0 max-size-time=0 ! \
+            videoconvert ! video/x-raw,format=I420_10LE ! \
+            {v_enc} {v_settings} ! queue ! mux. \
+            dbin. ! queue name=a_queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! \
+            audioconvert ! audioresample ! {a_enc} ! queue ! mux.",
             input_path = abs_input.display(),
             output_path = output_path.display(),
-            v_encoder = v_encoder,
+            v_enc = v_encoder,
             v_settings = v_settings,
-            a_encoder = a_encoder
+            a_enc = a_encoder
         );
         let pipeline =
             gstreamer::parse::launch(&pipeline_str).context("Failed to parse pipeline")?;
