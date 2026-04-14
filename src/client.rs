@@ -162,7 +162,7 @@ impl ServerClient {
             "1",
         ])
         .arg(output_path.clone());
-
+        println!("running: {:?}", cmd);
         let status = cmd
             .status()
             .context("FFmpeg failed to start. Is it installed?")?;
