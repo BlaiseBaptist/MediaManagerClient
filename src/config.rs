@@ -8,13 +8,11 @@ pub struct Config {
     pub job_path: String,
     pub complete_path: String,
     pub failed_path: String,
-    pub ffmpeg_bin: String,
     pub worker_id: String,
     pub poll_interval: Duration,
     pub work_dir: PathBuf,
     pub auth_token: Option<String>,
     pub allow_insecure_tls: bool,
-    pub debug_dry_run: bool,
 }
 
 impl Config {
@@ -32,9 +30,6 @@ impl Config {
 
         let failed_path = env::var("MEDIA_MANAGER_FAILED_PATH")
             .unwrap_or_else(|_| "/api/worker/jobs/{job_id}/failed".to_string());
-
-        let ffmpeg_bin =
-            env::var("MEDIA_MANAGER_FFMPEG_BIN").unwrap_or_else(|_| "ffmpeg".to_string());
 
         let worker_id = env::var("MEDIA_MANAGER_WORKER_ID")
             .unwrap_or_else(|_| format!("worker-{}", std::process::id()));
@@ -56,23 +51,16 @@ impl Config {
             .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
             .unwrap_or(false);
 
-        let debug_dry_run = env::var("MEDIA_MANAGER_DEBUG_DRY_RUN")
-            .ok()
-            .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-            .unwrap_or(false);
-
         Ok(Self {
             server_base_url,
             job_path,
             complete_path,
             failed_path,
-            ffmpeg_bin,
             worker_id,
             poll_interval,
             work_dir,
             auth_token,
             allow_insecure_tls,
-            debug_dry_run,
         })
     }
 

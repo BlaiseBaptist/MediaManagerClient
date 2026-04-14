@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse, TranscodeSpec},
+    job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse},
 };
 use anyhow::{Context, Result};
 
@@ -72,7 +72,7 @@ impl ServerClient {
             .await
             .with_context(|| format!("failed to create work dir {}", job_dir.display()))?;
 
-        let final_path = job_dir.join(job.filename.clone());
+        let final_path = job_dir.join("in.mkv");
         let temp_path = final_path.with_extension("part");
         let mut response = self
             .http
@@ -110,59 +110,36 @@ impl ServerClient {
         Ok(final_path)
     }
 
-    pub fn build_debug_ffmpeg_command(&self, job: &Job) -> String {
-        let input_path = job.planned_input_path(&self.config.work_dir);
-        let output_path = job.planned_output_path(&self.config.work_dir);
-        let parts = self.build_ffmpeg_parts(job, &input_path, &output_path);
-
-        let mut command_parts = vec![shell_quote(&self.config.ffmpeg_bin)];
-        command_parts.extend(parts.iter().map(|part| shell_quote(part)));
-        command_parts.join(" ")
-    }
-
     pub async fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
-        // 1. Initialize GStreamer (call this once per app lifecycle, but safe here)
         gstreamer::init()?;
 
-        // 2. Resolve output filename
-        let output_name = if !job.filename.is_empty() {
-            &job.filename
-        } else {
-            input_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("output")
-        };
-        let output_path = input_path.with_file_name(format!("{}.mkv", output_name));
-
-        // 3. Map Job Specs to GStreamer elements
+        let output_path = input_path.with_file_name("out.mkv");
         let spec = job.transcode.as_ref();
 
         // Map video codec: default to rav1e (av1enc)
         let v_encoder = match spec.and_then(|s| s.video_codec.as_deref()) {
-            Some("av1") | None => "av1enc",
-            Some("h264") => "x264enc",
+            Some("av1") | None => "svtav1enc",
             Some(other) => other, // Try to use the string directly if provided
         };
 
         // Map audio codec: default to opus
         let a_encoder = match spec.and_then(|s| s.audio_codec.as_deref()) {
             Some("opus") | None => "opusenc",
-            Some("aac") => "avenc_aac",
             Some(other) => other,
         };
-
-        // Quality mapping (AV1 specific: quantizer 20 is very high quality)
-        let quality_settings = match spec.and_then(|s| s.quality.as_deref()) {
-            Some("high") => "quantizer=20 speed-preset=6",
-            Some("medium") => "quantizer=35 speed-preset=8",
-            _ => "quantizer=25 speed-preset=6",
+        let quality_settings = match v_encoder {
+            "svtav1enc" => match spec.and_then(|s| s.quality.as_deref()) {
+                Some("high") => "preset=6 crf=20",
+                Some("medium") => "preset=8 crf=30",
+                _ => "preset=6 crf=25",
+            },
+            _ => "", // Fallback for unknown encoders
         };
 
         // 4. Construct the Pipeline String
         // We use 'decodebin' to handle any input format and 'matroskamux' for the .mkv container
         let pipeline_str = format!(
-            "filesrc location=\"{}\" ! decodebin name=dbin \
+            "filesrc location=\"{}\" ! decodebin force-sw-decoders=true name=dbin \
          matroskamux name=mux ! filesink location=\"{}\" \
          dbin. ! queue ! videoconvert ! {} {} ! mux. \
          dbin. ! queue ! audioconvert ! audioresample ! {} ! mux.",
@@ -273,52 +250,4 @@ impl ServerClient {
 
         Ok(())
     }
-
-    fn build_ffmpeg_parts(&self, job: &Job, input_path: &Path, output_path: &Path) -> Vec<String> {
-        let mut parts = vec![
-            "-hide_banner".to_string(),
-            "-y".to_string(),
-            "-i".to_string(),
-            input_path.display().to_string(),
-        ];
-
-        if let Some(spec) = &job.transcode {
-            append_transcode_args(&mut parts, spec);
-        }
-
-        parts.push(output_path.display().to_string());
-        parts
-    }
-}
-
-fn append_transcode_args(parts: &mut Vec<String>, spec: &TranscodeSpec) {
-    if let Some(value) = &spec.quality {
-        parts.push("-crf".to_string());
-        parts.push(value.clone());
-    }
-
-    if let Some(value) = &spec.video_codec {
-        parts.push("-c:v".to_string());
-        parts.push(value.clone());
-    }
-
-    if let Some(value) = &spec.audio_codec {
-        parts.push("-c:a".to_string());
-        parts.push(value.clone());
-    }
-}
-
-fn shell_quote(value: &str) -> String {
-    if value.is_empty() {
-        return "''".to_string();
-    }
-
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '+'))
-    {
-        return value.to_string();
-    }
-
-    format!("'{}'", value.replace('\'', r"'\''"))
 }

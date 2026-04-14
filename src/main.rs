@@ -13,10 +13,6 @@ async fn main() -> Result<()> {
     let config = Config::from_env()?;
     let client = ServerClient::new(config.clone())?;
 
-    if config.debug_dry_run {
-        println!("Debug dry run mode enabled");
-    }
-
     tokio::select! {
         result = run(client, config) => result,
         _ = signal::ctrl_c() => {
@@ -30,44 +26,7 @@ async fn run(client: ServerClient, config: Config) -> Result<()> {
     loop {
         match client.poll_next_job().await? {
             Some(job) => {
-                if config.debug_dry_run {
-                    let command = client.build_debug_ffmpeg_command(&job);
-                    let transcode = job
-                        .transcode
-                        .as_ref()
-                        .map(|spec| spec.summary())
-                        .unwrap_or_else(|| "no transcode spec".to_string());
-                    println!("Debug dry run for job {}:", job.id);
-                    println!(
-                        "  input: {}",
-                        job.planned_input_path(&config.work_dir).display()
-                    );
-                    println!(
-                        "  output: {}",
-                        job.planned_output_path(&config.work_dir).display()
-                    );
-                    println!("  transcode: {}", transcode);
-                    println!("  command: {command}");
-
-                    let reason =
-                        "debug dry run: printed planned ffmpeg command without downloading";
-                    if let Err(err) = client.report_job_failed(&job, reason).await {
-                        eprintln!(
-                            "Failed to report debug dry-run failure for job {}: {err:#}",
-                            job.id
-                        );
-                    }
-                    if let Err(err) = client.cleanup_job_files(&job).await {
-                        eprintln!(
-                            "Failed to clean up debug dry-run files for job {}: {err:#}",
-                            job.id
-                        );
-                    }
-                    println!("Marked job {} as failed for debug run", job.id);
-                    return Ok(());
-                } else {
-                    process_job(&client, &job).await?;
-                }
+                process_job(&client, &job).await?;
             }
             None => {
                 tokio::time::sleep(config.poll_interval).await;

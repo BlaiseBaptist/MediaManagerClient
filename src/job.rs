@@ -62,27 +62,6 @@ impl TranscodeSpec {
     }
 }
 
-impl Job {
-    pub fn planned_input_path(&self, work_dir: &std::path::Path) -> std::path::PathBuf {
-        work_dir.join(&self.id).join(self.filename.clone())
-    }
-
-    pub fn planned_output_path(&self, work_dir: &std::path::Path) -> std::path::PathBuf {
-        work_dir
-            .join(&self.id)
-            .join(self.planned_staging_output_filename())
-    }
-
-    pub fn planned_staging_output_filename(&self) -> String {
-        let delivery_filename = self.filename.clone();
-        if let Some((stem, extension)) = delivery_filename.rsplit_once('.') {
-            format!("{stem}.transcoded.{extension}")
-        } else {
-            format!("{delivery_filename}.transcoded")
-        }
-    }
-}
-
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct JobCompleteRequest<'a> {
