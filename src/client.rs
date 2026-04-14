@@ -3,7 +3,7 @@ use crate::{
     job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse},
 };
 use anyhow::{Context, Result};
-
+use gstrav1e;
 use gstreamer::prelude::*;
 use reqwest::{Body, Client, StatusCode, header};
 use std::{
@@ -129,6 +129,7 @@ impl ServerClient {
     }
     pub async fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
         gstreamer::init()?;
+        gstrav1e::plugin_register_static().expect("Failed to bundle rav1e plugin");
         let output_path = input_path.with_file_name("out.mkv");
         let spec = job.transcode.as_ref();
         // Map video codec: default to rav1e (av1enc)
