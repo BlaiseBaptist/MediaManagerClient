@@ -38,8 +38,6 @@ pub struct TranscodeSpec {
     pub video_codec: Option<String>,
     #[serde(default)]
     pub audio_codec: Option<String>,
-    #[serde(default)]
-    pub ffmpeg_args: Vec<String>,
 }
 
 impl TranscodeSpec {
@@ -54,9 +52,6 @@ impl TranscodeSpec {
         }
         if let Some(value) = &self.audio_codec {
             parts.push(format!("audio_codec={value}"));
-        }
-        if !self.ffmpeg_args.is_empty() {
-            parts.push(format!("ffmpeg_args={}", self.ffmpeg_args.join(" ")));
         }
 
         if parts.is_empty() {

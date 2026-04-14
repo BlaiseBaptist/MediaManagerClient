@@ -99,18 +99,10 @@ The client expects this shape:
 
 - `id`  
   Job identifier. Used as the local work directory name.
-
 - `input_url`  
-  URL to download the source file from.
-
 - `output_url`
-  - where the finished file should be uploaded after FFmpeg completes
-
 - `filename`  
-  Suggested local filename for the downloaded input.
-
 - `transcode`  
-  FFmpeg instructions. If omitted, the client still accepts the job.
 
 ## Lifecycle callbacks
 
@@ -140,5 +132,3 @@ Body:
 
 - Unknown JSON fields are ignored by the client.
 - `id` and `input_url` should be present for every job.
-- The client downloads the file immediately after job claim, then runs FFmpeg, writes the output to disk, and uploads it to `delivery.output_url` when provided.
-- Completion reporting is not active yet, so the server should not depend on it.

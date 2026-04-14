@@ -3,13 +3,15 @@ use crate::{
     job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse, TranscodeSpec},
 };
 use anyhow::{Context, Result};
+
+use gstreamer::prelude::*;
 use reqwest::{Body, Client, StatusCode, header};
 use std::{
     io::ErrorKind,
     path::{Path, PathBuf},
     time::Duration,
 };
-use tokio::{fs, io::AsyncWriteExt, process::Command};
+use tokio::{fs, io::AsyncWriteExt};
 use tokio_util::io::ReaderStream;
 use url::Url;
 
@@ -119,38 +121,85 @@ impl ServerClient {
     }
 
     pub async fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
-        let output_path = job.planned_output_path(&self.config.work_dir);
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent)
-                .await
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
+        // 1. Initialize GStreamer (call this once per app lifecycle, but safe here)
+        gstreamer::init()?;
 
-        let mut command = Command::new(&self.config.ffmpeg_bin);
-        command.args(self.build_ffmpeg_parts(job, input_path, &output_path));
-        command
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit());
+        // 2. Resolve output filename
+        let output_name = if !job.filename.is_empty() {
+            &job.filename
+        } else {
+            input_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("output")
+        };
+        let output_path = input_path.with_file_name(format!("{}.mkv", output_name));
 
-        println!(
-            "Running ffmpeg for job {}: {}",
-            job.id,
-            self.build_debug_ffmpeg_command(job)
+        // 3. Map Job Specs to GStreamer elements
+        let spec = job.transcode.as_ref();
+
+        // Map video codec: default to rav1e (av1enc)
+        let v_encoder = match spec.and_then(|s| s.video_codec.as_deref()) {
+            Some("av1") | None => "av1enc",
+            Some("h264") => "x264enc",
+            Some(other) => other, // Try to use the string directly if provided
+        };
+
+        // Map audio codec: default to opus
+        let a_encoder = match spec.and_then(|s| s.audio_codec.as_deref()) {
+            Some("opus") | None => "opusenc",
+            Some("aac") => "avenc_aac",
+            Some(other) => other,
+        };
+
+        // Quality mapping (AV1 specific: quantizer 20 is very high quality)
+        let quality_settings = match spec.and_then(|s| s.quality.as_deref()) {
+            Some("high") => "quantizer=20 speed-preset=6",
+            Some("medium") => "quantizer=35 speed-preset=8",
+            _ => "quantizer=25 speed-preset=6",
+        };
+
+        // 4. Construct the Pipeline String
+        // We use 'decodebin' to handle any input format and 'matroskamux' for the .mkv container
+        let pipeline_str = format!(
+            "filesrc location=\"{}\" ! decodebin name=dbin \
+         matroskamux name=mux ! filesink location=\"{}\" \
+         dbin. ! queue ! videoconvert ! {} {} ! mux. \
+         dbin. ! queue ! audioconvert ! audioresample ! {} ! mux.",
+            input_path.to_str().context("Invalid input path")?,
+            output_path.to_str().context("Invalid output path")?,
+            v_encoder,
+            quality_settings,
+            a_encoder
         );
 
-        let status = command
-            .status()
-            .await
-            .with_context(|| format!("failed to launch {}", self.config.ffmpeg_bin))?;
+        // 5. Run the Pipeline
+        let pipeline = gstreamer::parse::launch(&pipeline_str)
+            .context("Failed to parse gstreamerreamer pipeline string")?;
 
-        if !status.success() {
-            return Err(anyhow::anyhow!(
-                "ffmpeg exited with status {} for job {}",
-                status,
-                job.id
-            ));
+        pipeline.set_state(gstreamer::State::Playing)?;
+
+        // 6. Wait for Completion (EOS) or Error
+        let bus = pipeline.bus().context("Failed to get pipeline bus")?;
+
+        // In a real async app, you'd use a stream, but for a job file, a sync loop is fine
+        for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
+            use gstreamer::MessageView;
+            match msg.view() {
+                MessageView::Eos(..) => break,
+                MessageView::Error(err) => {
+                    pipeline.set_state(gstreamer::State::Null)?;
+                    return Err(anyhow::anyhow!(
+                        "GStreamer Error: {} ({})",
+                        err.error(),
+                        err.debug().unwrap_or_else(|| "no debug info".into())
+                    ));
+                }
+                _ => (),
+            }
         }
+
+        pipeline.set_state(gstreamer::State::Null)?;
         Ok(output_path)
     }
 
@@ -256,10 +305,6 @@ fn append_transcode_args(parts: &mut Vec<String>, spec: &TranscodeSpec) {
     if let Some(value) = &spec.audio_codec {
         parts.push("-c:a".to_string());
         parts.push(value.clone());
-    }
-
-    for arg in &spec.ffmpeg_args {
-        parts.push(arg.clone());
     }
 }
 
