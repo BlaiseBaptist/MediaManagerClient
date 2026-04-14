@@ -4,9 +4,9 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use gstreamer::prelude::*;
-use reqwest::StatusCode;
-use reqwest::blocking::Client;
+use reqwest::{StatusCode, blocking::Client};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use tokio::{fs, io::AsyncWriteExt};
 use url::Url;
 
@@ -71,7 +71,109 @@ impl ServerClient {
 
         Ok(final_path)
     }
+
     fn get_best_av1_encoder() -> String {
+        let output = Command::new("ffmpeg").arg("-encoders").output();
+
+        let Ok(output) = output else {
+            return "librav1e".to_string();
+        };
+
+        let encoder_list = String::from_utf8_lossy(&output.stdout);
+
+        let candidates = ["av1_nvenc", "av1_qsv", "av1_vaapi", "libsvtav1", "librav1e"];
+
+        for name in candidates {
+            if encoder_list.contains(name) {
+                return name.to_string();
+            }
+        }
+
+        "librav1e".to_string()
+    }
+
+    pub fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
+        let output_path = input_path.with_file_name("out.mkv");
+
+        // Determine encoder (matches your logic)
+        let v_encoder = match job
+            .transcode
+            .as_ref()
+            .and_then(|s| s.video_codec.as_deref())
+        {
+            Some("av1") | None => &Self::get_best_av1_encoder(), // Standard FFmpeg name
+            Some(other) => other,
+        };
+
+        let mut cmd = Command::new("ffmpeg");
+
+        cmd.arg("-y") // Overwrite output
+            .arg("-i")
+            .arg(input_path)
+            .arg("-c:v")
+            .arg(v_encoder)
+            .arg("-pix_fmt")
+            .arg("yuv420p10le"); // High quality 10-bit
+
+        // Apply your specific settings
+        match v_encoder {
+            "libsvtav1" => cmd.args([
+                "-preset",
+                "4",
+                "-crf",
+                "20",
+                "-svtav1-params",
+                "tune=0:enable-overlays=1",
+            ]),
+            "librav1e" => cmd.args(["-speed", "3", "-qp", "60", "-tiles", "9"]),
+            "av1_nvenc" => cmd.args([
+                "-preset", "p7", "-tune", "hq", "-rc", "constqp", "-qp", "18", "-b:v 0",
+            ]),
+            "av1_vaapi" => cmd.args(["-rc_mode", "CQP", "-qp", "18", "-compression_level:v", "1"]),
+            "av1_qsv" => cmd.args([
+                "-preset",
+                "veryslow",
+                "-global_quality:v",
+                "20",
+                "-look_ahead:v",
+                "1",
+            ]),
+            _ => {
+                todo!()
+            }
+        };
+
+        let a_encoder = match job
+            .transcode
+            .as_ref()
+            .and_then(|s| s.audio_codec.as_deref())
+        {
+            Some("opus") | None => "libopus",
+            Some(other) => other,
+        };
+        cmd.args([
+            "-c:a",
+            a_encoder,
+            "-b:a",
+            "512k",
+            "-ac",
+            "6",
+            "-mapping_family",
+            "1",
+        ])
+        .arg(output_path.clone());
+
+        let status = cmd
+            .status()
+            .context("FFmpeg failed to start. Is it installed?")?;
+
+        if status.success() {
+            Ok(output_path)
+        } else {
+            Err(anyhow::anyhow!("FFmpeg exited with error"))
+        }
+    }
+    fn get_best_gs_av1_encoder() -> String {
         let registry = gstreamer::Registry::get();
         let candidates = ["vaapiav1enc", "svtav1enc", "rav1enc", "avenc_av1"];
         for name in candidates {
@@ -84,8 +186,8 @@ impl ServerClient {
         }
         "rav1enc".to_string()
     }
-
-    pub fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
+    #[allow(dead_code)]
+    pub fn gs_transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
         let abs_input = input_path.canonicalize()?;
         let output_path = input_path.with_file_name("out.mkv");
 
@@ -102,17 +204,15 @@ impl ServerClient {
             .as_ref()
             .and_then(|s| s.video_codec.as_deref())
         {
-            Some("av1") | None => &Self::get_best_av1_encoder(),
+            Some("av1") | None => &Self::get_best_gs_av1_encoder(),
             Some(other) => other,
         };
         let v_settings = match v_encoder {
-            // "svtav1enc" => "preset=4 crf=22",
-            "svtav1enc" => "preset=8 crf=30 level-of-parallelism=1",
+            "svtav1enc" => "preset=4 crf=22",
             "rav1enc" => "speed-preset=3 quantizer=70 threads=0 tiles=9",
             "avenc_av1" => "cpu-used=3 row-mt=true threads=16",
             _ => "",
         };
-        println!("v_encoder: {}", v_encoder);
         let pipeline_str = format!(
             "uridecodebin3 uri=file://{input_path} name=dbin \
             matroskamux name=mux ! filesink location=\"{output_path}\" \
@@ -134,7 +234,6 @@ impl ServerClient {
         let bus = pipeline.bus().context("No bus")?;
         for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
             use gstreamer::MessageView;
-            println!("looping");
             match msg.view() {
                 MessageView::Eos(..) => break,
                 MessageView::Error(err) => {
@@ -146,7 +245,6 @@ impl ServerClient {
         }
 
         pipeline.set_state(gstreamer::State::Null)?;
-        println!("done trancoding");
         Ok(output_path)
     }
 
@@ -176,19 +274,17 @@ impl ServerClient {
     }
 
     pub fn cleanup_job_files(&self, job: &Job) -> Result<()> {
-        // let job_dir = self.config.work_dir.join(&job.id);
-        // match std::fs::remove_dir_all(&job_dir) {
-        //     Ok(()) => Ok(()),
-        //     Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        //     Err(err) => Err(err).with_context(|| format!("failed to remove {}", job_dir.display())),
-        // }
-        return Ok(());
+        let job_dir = self.config.work_dir.join(&job.id);
+        match std::fs::remove_dir_all(&job_dir) {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(err).with_context(|| format!("failed to remove {}", job_dir.display())),
+        }
     }
 
     #[allow(dead_code)]
     pub fn report_job_complete(&self, job: &Job) -> Result<()> {
         let body = JobCompleteRequest { job_id: &job.id };
-
         self.http
             .get(self.config.complete_url(&job.id))
             .json(&body)
@@ -196,7 +292,6 @@ impl ServerClient {
             .with_context(|| format!("failed to send complete callback for job {}", job.id))?
             .error_for_status()
             .with_context(|| format!("complete callback rejected for job {}", job.id))?;
-
         Ok(())
     }
 
@@ -205,7 +300,6 @@ impl ServerClient {
             job_id: &job.id,
             error,
         };
-
         self.http
             .get(self.config.failed_url(&job.id))
             .json(&body)
@@ -213,7 +307,6 @@ impl ServerClient {
             .with_context(|| format!("failed to send failed callback for job {}", job.id))?
             .error_for_status()
             .with_context(|| format!("failed callback rejected for job {}", job.id))?;
-
         Ok(())
     }
 }
