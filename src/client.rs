@@ -142,29 +142,31 @@ impl ServerClient {
             Some("av1") | None => &Self::get_best_av1_encoder(),
             Some(other) => other,
         };
-
-        // ARCHIVAL CONFIGURATION
-        // These settings prioritize quality (CRF/Quantizer) and ensure multi-core utilization via threading/tiles.
+        let a_encoder = match job
+            .transcode
+            .as_ref()
+            .and_then(|s| s.audio_codec.as_deref())
+        {
+            Some("opus") | None => "opusenc",
+            Some(other) => other,
+        };
         let quality_settings = match v_encoder {
             "svtav1enc" => "preset=4 crf=22 logical-processors=0",
-            "rav1enc" => "speed-preset=3 quantizer=70 threads=0 tile-columns=2 tile-rows=2",
+            "rav1enc" => "speed-preset=3 quantizer=70 threads=0 tile-rows=2",
             "avenc_av1" => "cpu-used=3 row-mt=true threads=16 end-usage=vbr target-bitrate=0",
             _ => "",
         };
-
-        // PIPELINE OPTIMIZATION
-        // 1. uridecodebin3: Better performance and more stable for modern formats.
-        // 2. n-threads=0: Parallelizes the intensive color-space conversion.
-        // 3. Audio: Archival usually warrants FLAC (lossless) or high-bitrate Opus.
+        println!("encoder: {}", v_encoder);
         let pipeline_str = format!(
             "uridecodebin3 uri={uri} name=dbin \
          matroskamux name=mux ! filesink location=\"{out}\" \
-         dbin. ! queue max-size-buffers=2 ! videoconvert n-threads=0 ! queue ! {enc} {settings} ! queue ! mux. \
-         dbin. ! queue ! audioconvert ! audioresample ! opusenc bitrate=256000 ! mux.",
+         dbin. ! queue ! videoconvert n-threads=0 ! video/x-raw,format=I420_10LE ! queue ! {v_enc} {v_settings} ! queue ! mux. \
+         dbin. ! queue ! audioconvert ! audioresample ! {a_enc} ! queue ! mux.",
             uri = input_uri,
             out = output_path.to_str().context("Invalid output path")?,
-            enc = v_encoder,
-            settings = quality_settings
+            v_enc = v_encoder,
+            v_settings = quality_settings,
+            a_enc = a_encoder
         );
 
         let pipeline =
@@ -185,6 +187,7 @@ impl ServerClient {
         }
 
         pipeline.set_state(gstreamer::State::Null)?;
+        println!("done trancoding");
         Ok(output_path)
     }
 
