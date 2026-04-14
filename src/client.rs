@@ -127,7 +127,7 @@ impl ServerClient {
             ]),
             "librav1e" => cmd.args(["-speed", "3", "-qp", "60", "-tiles", "9"]),
             "av1_nvenc" => cmd.args([
-                "-preset", "p7", "-tune", "hq", "-rc", "constqp", "-qp", "18", "-b:v 0",
+                "-preset", "p7", "-tune", "hq", "-rc", "constqp", "-qp", "18", "-b:v", "0",
             ]),
             "av1_vaapi" => cmd.args(["-rc_mode", "CQP", "-qp", "18", "-compression_level:v", "1"]),
             "av1_qsv" => cmd.args([
