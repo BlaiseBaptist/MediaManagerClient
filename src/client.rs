@@ -17,21 +17,6 @@ pub struct ServerClient {
 
 impl ServerClient {
     pub fn new(config: Config) -> Result<Self> {
-        // let mut headers = header::HeaderMap::new();
-
-        // if let Some(token) = &config.auth_token {
-        //     let value = format!("Bearer {token}")
-        //         .parse()
-        //         .context("invalid auth token")?;
-        //     headers.insert(header::AUTHORIZATION, value);
-        // }
-
-        // let builder = Client::builder()
-        //     .default_headers(headers)
-        //     .danger_accept_invalid_certs(config.allow_insecure_tls)
-        //     .timeout(Duration::from_secs(300));
-
-        // let http = builder.build().context("failed to build HTTP client")?;
         Ok(Self {
             http: reqwest::blocking::Client::new(),
             config,
@@ -45,7 +30,6 @@ impl ServerClient {
         {
             return Ok(None);
         }
-
         let job = response
             .json::<JobResponse>()
             .context("failed to decode job response")?
@@ -91,10 +75,7 @@ impl ServerClient {
     }
     fn get_best_av1_encoder() -> String {
         let registry = gstreamer::Registry::get();
-
-        // Priority: Hardware (VAAPI) -> SVT (Fast) -> rav1e (Rust/Safe) -> AOM (Reference)
         let candidates = ["vaapiav1enc", "svtav1enc", "rav1enc", "avenc_av1"];
-
         for name in candidates {
             if registry
                 .find_feature(name, gstreamer::ElementFactory::static_type())
@@ -103,8 +84,6 @@ impl ServerClient {
                 return name.to_string();
             }
         }
-
-        // Fallback or error if none found
         "rav1enc".to_string()
     }
     pub fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
@@ -172,25 +151,28 @@ impl ServerClient {
         Ok(output_path)
     }
 
-    pub fn upload_job_output(&self, _job: &Job, _output_path: &Path) -> Result<()> {
-        // let file = fs::File::open(output_path).await
-        //     .with_context(|| format!("failed to open {}", output_path.display()))?;
-        // let stream = ReaderStream::new(file);
-        // let body = Body::wrap_stream(stream);
-
-        // self.http
-        //     .post(Url::parse(&job.output_url).context("delivery output_url is not a valid URL")?)
-        //     .header(header::CONTENT_TYPE, "application/octet-stream")
-        //     .header(
-        //         header::CONTENT_DISPOSITION,
-        //         format!("attachment; filename=\"{}\"", job.filename),
-        //     )
-        //     .header("X-Output-Filename", job.filename.clone())
-        //     .body(body)
-        //     .send()
-        //     .with_context(|| format!("failed to upload output for job {}", job.id))?
-        //     .error_for_status()
-        //     .with_context(|| format!("output upload rejected for job {}", job.id))?;
+    pub fn upload_job_output(&self, job: &Job, output_path: &Path) -> Result<()> {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let file = tokio::fs::File::open(output_path)
+                .await
+                .with_context(|| format!("failed to open {}", output_path.display()))?;
+            let stream = tokio_util::io::ReaderStream::new(file);
+            let body = reqwest::Body::wrap_stream(stream);
+            let client = reqwest::Client::new();
+            client
+                .put(
+                    Url::parse(&job.output_url)
+                        .context("delivery output_url is not a valid URL")?,
+                )
+                .body(body)
+                .send()
+                .await
+                .with_context(|| format!("failed to upload output for job {}", job.id))?
+                .error_for_status()
+                .with_context(|| format!("output upload rejected for job {}", job.id))?;
+            return Ok::<(), anyhow::Error>(());
+        })?;
         Ok(())
     }
 
