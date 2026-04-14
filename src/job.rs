@@ -65,14 +65,13 @@ impl TranscodeSpec {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct JobCompleteRequest<'a> {
-    pub worker_id: &'a str,
-    pub output_url: &'a str,
+    pub job_id: &'a str,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct JobFailedRequest<'a> {
-    pub worker_id: &'a str,
+    pub job_id: &'a str,
     pub error: &'a str,
 }
 

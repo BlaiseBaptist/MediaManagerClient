@@ -4,14 +4,10 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use gstreamer::prelude::*;
-use reqwest::{Body, Client, StatusCode, header};
-use std::{
-    io::ErrorKind,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use reqwest::StatusCode;
+use reqwest::blocking::Client;
+use std::path::{Path, PathBuf};
 use tokio::{fs, io::AsyncWriteExt};
-use tokio_util::io::ReaderStream;
 use url::Url;
 
 pub struct ServerClient {
@@ -21,89 +17,74 @@ pub struct ServerClient {
 
 impl ServerClient {
     pub fn new(config: Config) -> Result<Self> {
-        let mut headers = header::HeaderMap::new();
+        // let mut headers = header::HeaderMap::new();
 
-        if let Some(token) = &config.auth_token {
-            let value = format!("Bearer {token}")
-                .parse()
-                .context("invalid auth token")?;
-            headers.insert(header::AUTHORIZATION, value);
-        }
+        // if let Some(token) = &config.auth_token {
+        //     let value = format!("Bearer {token}")
+        //         .parse()
+        //         .context("invalid auth token")?;
+        //     headers.insert(header::AUTHORIZATION, value);
+        // }
 
-        let builder = Client::builder()
-            .default_headers(headers)
-            .danger_accept_invalid_certs(config.allow_insecure_tls)
-            .timeout(Duration::from_secs(300));
+        // let builder = Client::builder()
+        //     .default_headers(headers)
+        //     .danger_accept_invalid_certs(config.allow_insecure_tls)
+        //     .timeout(Duration::from_secs(300));
 
-        let http = builder.build().context("failed to build HTTP client")?;
-
-        Ok(Self { http, config })
+        // let http = builder.build().context("failed to build HTTP client")?;
+        Ok(Self {
+            http: reqwest::blocking::Client::new(),
+            config,
+        })
     }
 
-    pub async fn poll_next_job(&self) -> Result<Option<Job>> {
-        let response = self
-            .http
-            .get(self.config.job_url())
-            .query(&[("worker_id", self.config.worker_id.as_str())])
-            .send()
-            .await
-            .context("failed to poll job endpoint")?;
+    pub fn poll_next_job(&self) -> Result<Option<Job>> {
+        let response = self.http.get(self.config.job_url()).send()?;
 
         if response.status() == StatusCode::NO_CONTENT || response.status() == StatusCode::NOT_FOUND
         {
             return Ok(None);
         }
 
-        let response = response
-            .error_for_status()
-            .context("job endpoint returned an error")?;
         let job = response
             .json::<JobResponse>()
-            .await
             .context("failed to decode job response")?
             .into_job();
         Ok(Some(job))
     }
 
-    pub async fn receive_job_file(&self, job: &Job) -> Result<PathBuf> {
+    pub fn receive_job_file(&self, job: &Job) -> Result<PathBuf> {
         let job_dir = self.config.work_dir.join(&job.id);
-        fs::create_dir_all(&job_dir)
-            .await
+        std::fs::create_dir_all(&job_dir)
             .with_context(|| format!("failed to create work dir {}", job_dir.display()))?;
-
         let final_path = job_dir.join("in.mkv");
         let temp_path = final_path.with_extension("part");
-        let mut response = self
-            .http
-            .get(Url::parse(&job.input_url).context("job input_url is not a valid URL")?)
-            .send()
-            .await
-            .with_context(|| format!("failed to download job {}", job.id))?
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        println!("DEBUG:  getting file at {}", job.input_url);
+        rt.block_on(async {
+            let mut response = reqwest::get(
+                Url::parse(&job.input_url).context("job input_url is not a valid URL")?,
+            )
+            .await?
             .error_for_status()
             .with_context(|| format!("job {} download returned an error", job.id))?;
-
-        let mut file = fs::File::create(&temp_path)
-            .await
-            .with_context(|| format!("failed to create {}", temp_path.display()))?;
-
-        println!("DEBUG:  getting file at {}", job.input_url);
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .context("failed while streaming file")?
-        {
-            file.write_all(&chunk)
+            let mut file: tokio::fs::File = fs::File::create(&temp_path)
                 .await
-                .with_context(|| format!("failed to write {}", temp_path.display()))?;
-        }
+                .with_context(|| format!("failed to create {}", temp_path.display()))?;
 
+            while let Some(chunk) = response
+                .chunk()
+                .await
+                .context("failed while streaming file")?
+            {
+                file.write_all(&chunk)
+                    .await
+                    .with_context(|| format!("failed to write {}", temp_path.display()))?;
+            }
+            return Ok::<(), anyhow::Error>(());
+        })?;
         println!("DEBUG: recieved file at {}", job.input_url);
-        file.flush()
-            .await
-            .with_context(|| format!("failed to flush {}", temp_path.display()))?;
-
-        fs::rename(&temp_path, &final_path)
-            .await
+        std::fs::rename(&temp_path, &final_path)
             .with_context(|| format!("failed to finalize {}", final_path.display()))?;
 
         Ok(final_path)
@@ -126,7 +107,7 @@ impl ServerClient {
         // Fallback or error if none found
         "rav1enc".to_string()
     }
-    pub async fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
+    pub fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
         let abs_input = input_path.canonicalize()?;
         let input_uri = format!(
             "file://{}",
@@ -134,20 +115,20 @@ impl ServerClient {
         );
         let output_path = input_path.with_file_name("archive_out.mkv");
 
-        let v_encoder = match job
-            .transcode
-            .as_ref()
-            .and_then(|s| s.video_codec.as_deref())
-        {
-            Some("av1") | None => &Self::get_best_av1_encoder(),
-            Some(other) => other,
-        };
         let a_encoder = match job
             .transcode
             .as_ref()
             .and_then(|s| s.audio_codec.as_deref())
         {
             Some("opus") | None => "opusenc",
+            Some(other) => other,
+        };
+        let v_encoder = match job
+            .transcode
+            .as_ref()
+            .and_then(|s| s.video_codec.as_deref())
+        {
+            Some("av1") | None => &Self::get_best_av1_encoder(),
             Some(other) => other,
         };
         let quality_settings = match v_encoder {
@@ -191,51 +172,45 @@ impl ServerClient {
         Ok(output_path)
     }
 
-    pub async fn upload_job_output(&self, job: &Job, output_path: &Path) -> Result<()> {
-        let file = fs::File::open(output_path)
-            .await
-            .with_context(|| format!("failed to open {}", output_path.display()))?;
-        let stream = ReaderStream::new(file);
-        let body = Body::wrap_stream(stream);
+    pub fn upload_job_output(&self, job: &Job, output_path: &Path) -> Result<()> {
+        // let file = fs::File::open(output_path).await
+        //     .with_context(|| format!("failed to open {}", output_path.display()))?;
+        // let stream = ReaderStream::new(file);
+        // let body = Body::wrap_stream(stream);
 
-        self.http
-            .post(Url::parse(&job.output_url).context("delivery output_url is not a valid URL")?)
-            .header(header::CONTENT_TYPE, "application/octet-stream")
-            .header(
-                header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{}\"", job.filename),
-            )
-            .header("X-Output-Filename", job.filename.clone())
-            .body(body)
-            .send()
-            .await
-            .with_context(|| format!("failed to upload output for job {}", job.id))?
-            .error_for_status()
-            .with_context(|| format!("output upload rejected for job {}", job.id))?;
+        // self.http
+        //     .post(Url::parse(&job.output_url).context("delivery output_url is not a valid URL")?)
+        //     .header(header::CONTENT_TYPE, "application/octet-stream")
+        //     .header(
+        //         header::CONTENT_DISPOSITION,
+        //         format!("attachment; filename=\"{}\"", job.filename),
+        //     )
+        //     .header("X-Output-Filename", job.filename.clone())
+        //     .body(body)
+        //     .send()
+        //     .with_context(|| format!("failed to upload output for job {}", job.id))?
+        //     .error_for_status()
+        //     .with_context(|| format!("output upload rejected for job {}", job.id))?;
         Ok(())
     }
 
-    pub async fn cleanup_job_files(&self, job: &Job) -> Result<()> {
+    pub fn cleanup_job_files(&self, job: &Job) -> Result<()> {
         let job_dir = self.config.work_dir.join(&job.id);
-        match fs::remove_dir_all(&job_dir).await {
+        match std::fs::remove_dir_all(&job_dir) {
             Ok(()) => Ok(()),
-            Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(err) => Err(err).with_context(|| format!("failed to remove {}", job_dir.display())),
         }
     }
 
     #[allow(dead_code)]
-    pub async fn report_job_complete(&self, job: &Job) -> Result<()> {
-        let body = JobCompleteRequest {
-            worker_id: &self.config.worker_id,
-            output_url: &job.output_url,
-        };
+    pub fn report_job_complete(&self, job: &Job) -> Result<()> {
+        let body = JobCompleteRequest { job_id: &job.id };
 
         self.http
-            .post(self.config.complete_url(&job.id))
+            .get(self.config.complete_url(&job.id))
             .json(&body)
             .send()
-            .await
             .with_context(|| format!("failed to send complete callback for job {}", job.id))?
             .error_for_status()
             .with_context(|| format!("complete callback rejected for job {}", job.id))?;
@@ -243,18 +218,16 @@ impl ServerClient {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub async fn report_job_failed(&self, job: &Job, error: &str) -> Result<()> {
+    pub fn report_job_failed(&self, job: &Job, error: &str) -> Result<()> {
         let body = JobFailedRequest {
-            worker_id: &self.config.worker_id,
+            job_id: &job.id,
             error,
         };
 
         self.http
-            .post(self.config.failed_url(&job.id))
+            .get(self.config.failed_url(&job.id))
             .json(&body)
             .send()
-            .await
             .with_context(|| format!("failed to send failed callback for job {}", job.id))?
             .error_for_status()
             .with_context(|| format!("failed callback rejected for job {}", job.id))?;
