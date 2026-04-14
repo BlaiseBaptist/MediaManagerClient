@@ -44,7 +44,6 @@ impl ServerClient {
         let final_path = job_dir.join("in.mkv");
         let temp_path = final_path.with_extension("part");
         let rt = tokio::runtime::Runtime::new().unwrap();
-        println!("DEBUG:  getting file at {}", job.input_url);
         rt.block_on(async {
             let mut response = reqwest::get(
                 Url::parse(&job.input_url).context("job input_url is not a valid URL")?,
@@ -67,7 +66,6 @@ impl ServerClient {
             }
             Ok::<(), anyhow::Error>(())
         })?;
-        println!("DEBUG: recieved file at {}", job.input_url);
         std::fs::rename(&temp_path, &final_path)
             .with_context(|| format!("failed to finalize {}", final_path.display()))?;
 
