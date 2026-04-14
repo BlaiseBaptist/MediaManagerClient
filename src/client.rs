@@ -106,12 +106,13 @@ impl ServerClient {
             Some(other) => other,
         };
         let v_settings = match v_encoder {
-            // "svtav1enc" => "preset=4 crf=22 logical-processors=0",
-            "svtav1enc" => "preset=8 crf=30 logical-processors=0",
-            "rav1enc" => "speed-preset=3 quantizer=70 threads=0",
+            // "svtav1enc" => "preset=4 crf=22",
+            "svtav1enc" => "preset=8 crf=30 level-of-parallelism=1",
+            "rav1enc" => "speed-preset=3 quantizer=70 threads=0 tiles=9",
             "avenc_av1" => "cpu-used=3 row-mt=true threads=16",
             _ => "",
         };
+        println!("v_encoder: {}", v_encoder);
         let pipeline_str = format!(
             "uridecodebin3 uri=file://{input_path} name=dbin \
             matroskamux name=mux ! filesink location=\"{output_path}\" \
@@ -133,6 +134,7 @@ impl ServerClient {
         let bus = pipeline.bus().context("No bus")?;
         for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
             use gstreamer::MessageView;
+            println!("looping");
             match msg.view() {
                 MessageView::Eos(..) => break,
                 MessageView::Error(err) => {
@@ -174,12 +176,13 @@ impl ServerClient {
     }
 
     pub fn cleanup_job_files(&self, job: &Job) -> Result<()> {
-        let job_dir = self.config.work_dir.join(&job.id);
-        match std::fs::remove_dir_all(&job_dir) {
-            Ok(()) => Ok(()),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(err) => Err(err).with_context(|| format!("failed to remove {}", job_dir.display())),
-        }
+        // let job_dir = self.config.work_dir.join(&job.id);
+        // match std::fs::remove_dir_all(&job_dir) {
+        //     Ok(()) => Ok(()),
+        //     Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        //     Err(err) => Err(err).with_context(|| format!("failed to remove {}", job_dir.display())),
+        // }
+        return Ok(());
     }
 
     #[allow(dead_code)]
