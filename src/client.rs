@@ -109,16 +109,31 @@ impl ServerClient {
 
         Ok(final_path)
     }
+    fn get_best_av1_encoder() -> String {
+        let registry = gstreamer::Registry::get();
 
+        // Priority: Hardware (VAAPI) -> SVT (Fast) -> rav1e (Rust/Safe) -> AOM (Reference)
+        let candidates = ["vaapiav1enc", "svtav1enc", "rav1enc", "avenc_av1"];
+
+        for name in candidates {
+            if registry
+                .find_feature(name, gstreamer::ElementFactory::static_type())
+                .is_some()
+            {
+                return name.to_string();
+            }
+        }
+
+        // Fallback or error if none found
+        "rav1enc".to_string()
+    }
     pub async fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
         gstreamer::init()?;
-
         let output_path = input_path.with_file_name("out.mkv");
         let spec = job.transcode.as_ref();
-
         // Map video codec: default to rav1e (av1enc)
         let v_encoder = match spec.and_then(|s| s.video_codec.as_deref()) {
-            Some("av1") | None => "svtav1enc",
+            Some("av1") | None => &Self::get_best_av1_encoder(),
             Some(other) => other, // Try to use the string directly if provided
         };
 
@@ -128,14 +143,12 @@ impl ServerClient {
             Some(other) => other,
         };
         let quality_settings = match v_encoder {
-            "svtav1enc" => match spec.and_then(|s| s.quality.as_deref()) {
-                Some("high") => "preset=6 crf=20",
-                Some("medium") => "preset=8 crf=30",
-                _ => "preset=6 crf=25",
-            },
-            _ => "", // Fallback for unknown encoders
+            "vaapiav1enc" => "target-usage=4", // VAAPI uses target-usage (1-7)
+            "svtav1enc" => "preset=8 crf=30",
+            "rav1enc" => "speed-preset=4 quantizer=80",
+            "avenc_av1" => "cpu-used=4", // libaom settings
+            _ => "",
         };
-
         // 4. Construct the Pipeline String
         // We use 'decodebin' to handle any input format and 'matroskamux' for the .mkv container
         let pipeline_str = format!(

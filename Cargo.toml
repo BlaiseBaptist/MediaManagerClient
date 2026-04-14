@@ -6,8 +6,20 @@ edition = "2024"
 [dependencies]
 anyhow = "1"
 gstreamer = "0.25.1"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+gst-plugin-rav1e = "0.13"
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+  "stream",
+] }
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["fs", "macros", "process", "rt-multi-thread", "signal", "time"] }
+tokio = { version = "1", features = [
+  "fs",
+  "macros",
+  "process",
+  "rt-multi-thread",
+  "signal",
+  "time",
+] }
 tokio-util = { version = "0.7", features = ["io"] }
 url = "2"
