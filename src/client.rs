@@ -111,9 +111,7 @@ impl ServerClient {
             .arg("-i")
             .arg(input_path)
             .arg("-c:v")
-            .arg(v_encoder)
-            .arg("-pix_fmt")
-            .arg("yuv420p10le"); // High quality 10-bit
+            .arg(v_encoder);
 
         // Apply your specific settings
         match v_encoder {
@@ -124,12 +122,33 @@ impl ServerClient {
                 "20",
                 "-svtav1-params",
                 "tune=0:enable-overlays=1",
+                "-pix_fmt",
+                "yuv420p10le",
             ]),
-            "librav1e" => cmd.args(["-speed", "3", "-qp", "60", "-tiles", "9"]),
+            "librav1e" => cmd.args([
+                "-speed",
+                "3",
+                "-qp",
+                "60",
+                "-tiles",
+                "9",
+                "-pix_fmt",
+                "yuv420p10le",
+            ]),
             "av1_nvenc" => cmd.args([
                 "-preset", "p7", "-tune", "hq", "-rc", "constqp", "-qp", "18", "-b:v", "0",
+                "-pix_fmt", "p10le",
             ]),
-            "av1_vaapi" => cmd.args(["-rc_mode", "CQP", "-qp", "18", "-compression_level:v", "1"]),
+            "av1_vaapi" => cmd.args([
+                "-rc_mode",
+                "CQP",
+                "-qp",
+                "18",
+                "-compression_level:v",
+                "1",
+                "-pix_fmt",
+                "yuv420p10le",
+            ]),
             "av1_qsv" => cmd.args([
                 "-preset",
                 "veryslow",
@@ -137,6 +156,8 @@ impl ServerClient {
                 "20",
                 "-look_ahead:v",
                 "1",
+                "-pix_fmt",
+                "yuv420p10le",
             ]),
             _ => {
                 todo!()

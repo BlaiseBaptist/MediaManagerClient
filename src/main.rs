@@ -78,7 +78,7 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         fail_and_cleanup(client, job, &err.to_string());
         return Ok(());
     } else {
-        println!("Cleaned uploaded files for job {}", job.id);
+        println!("Uploaded files for job {}", job.id);
     }
     if let Err(err) = client.report_job_complete(job) {
         eprintln!(
