@@ -137,7 +137,7 @@ impl ServerClient {
             ]),
             "av1_nvenc" => cmd.args([
                 "-preset", "p7", "-tune", "hq", "-rc", "constqp", "-qp", "18", "-b:v", "0",
-                "-pix_fmt", "p10le",
+                "-pix_fmt", "p010le",
             ]),
             "av1_vaapi" => cmd.args([
                 "-rc_mode",
