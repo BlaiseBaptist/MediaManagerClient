@@ -43,6 +43,7 @@ impl ServerClient {
             .with_context(|| format!("failed to create work dir {}", job_dir.display()))?;
         let final_path = job_dir.join("in.mkv");
         let temp_path = final_path.with_extension("part");
+        println!("Downloading from {}", &job.input_url);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let mut response = reqwest::get(
