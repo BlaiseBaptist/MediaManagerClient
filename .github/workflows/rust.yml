@@ -21,7 +21,7 @@ jobs:
             binary_name: MediaMangerClient.exe
           - os: macos-latest
             target: x86_64-apple-darwin
-            binary_name: MediaMangerClient-man
+            binary_name: MediaMangerClient-mac
 
     steps:
       - uses: actions/checkout@v4
