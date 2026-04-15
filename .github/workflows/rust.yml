@@ -3,18 +3,21 @@ name: Release Binaries
 on:
   push:
     tags:
-      - 'v*' # Triggers only when you push a version tag like v1.0.0
+      - 'v*' # Runs when you push a tag like v1.0.0
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    # Grants permission to upload files to the Release
+    permissions:
+      contents: write
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: linux-latest
             target: x86_64-unknown-linux-gnu
             binary_name: my-app-linux
-          - os: ubuntu-latest
+          - os: windows-latest
             target: x86_64-pc-windows-gnu
             binary_name: my-app-windows.exe
           - os: macos-latest
@@ -39,11 +42,11 @@ jobs:
       - name: Rename & Package
         shell: bash
         run: |
-          # Moves the binary to a predictable name for the release
-          cp target/${{ matrix.target }}/release/your_project_name ${{ matrix.binary_name }}
+          cp target/${{ matrix.target }}/release/MediaManagerClient ${{ matrix.binary_name }}
 
+      # Updated to v2 to avoid deprecation and permission issues
       - name: Upload to Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.binary_name }}
         env:
