@@ -39,10 +39,7 @@ impl ServerClient {
     }
 
     pub fn receive_job_file(&self, job: &Job) -> Result<PathBuf> {
-        let job_dir = self.config.work_dir.join(&job.id);
-        std::fs::create_dir_all(&job_dir)
-            .with_context(|| format!("failed to create work dir {}", job_dir.display()))?;
-        let final_path = job_dir.join("in.mkv");
+        let final_path = self.config.work_dir.join("in.mkv");
         let temp_path = final_path.with_extension("part");
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
@@ -97,13 +94,13 @@ impl ServerClient {
         let status = Command::new("ffmpeg")
             .args([
                 "-f",
-                "lavfi", // Use a virtual input
+                "lavfi",
                 "-i",
                 "nullsrc=s=256x256:r=1",
                 "-frames:v",
                 "1",
                 "-c:v",
-                encoder, // Test this specific encoder
+                encoder,
                 "-f",
                 "null",
                 "-",
