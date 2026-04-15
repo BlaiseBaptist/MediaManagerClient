@@ -291,8 +291,15 @@ impl ServerClient {
             let client = reqwest::Client::new();
             client
                 .put(
-                    Url::parse(&job.output_url)
-                        .context("delivery output_url is not a valid URL")?,
+                    Url::parse(&format!(
+                        "http://{}/{}",
+                        self.config
+                            .server_base_url
+                            .host()
+                            .context("invaild MEDIA_MANAGER_SERVER_URL")?,
+                        &job.input_url
+                    ))
+                    .context("delivery output_url is not a valid URL")?,
                 )
                 .body(body)
                 .send()
