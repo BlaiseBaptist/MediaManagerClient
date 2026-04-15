@@ -3,13 +3,13 @@ name: Release Binaries
 on:
   push:
     tags:
-      - 'v*' # Triggers on tags like v1.0.0
+      - 'v*'
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: write # Required to upload files to the Release
+      contents: write
     strategy:
       matrix:
         include:
@@ -41,8 +41,7 @@ jobs:
       - name: Rename & Package
         shell: bash
         run: |
-          # Replace 'your_project_name' with the name in your Cargo.toml
-          cp target/${{ matrix.target }}/release/your_project_name ${{ matrix.binary_name }}
+          cp target/${{ matrix.target }}/release/MediaManagerClient ${{ matrix.binary_name }}
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
