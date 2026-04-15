@@ -36,7 +36,7 @@ impl Config {
 
         let work_dir = env::var("MEDIA_MANAGER_WORK_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("./.work"));
+            .unwrap_or_else(|_| env::temp_dir());
 
         Ok(Self {
             server_base_url,
