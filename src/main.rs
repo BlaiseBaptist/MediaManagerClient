@@ -21,12 +21,16 @@ fn main() {
 
 fn run(client: ServerClient, config: Config) -> Result<()> {
     loop {
-        match client.poll_next_job()? {
-            Some(job) => {
+        match client.poll_next_job() {
+            Ok(Some(job)) => {
                 process_job(&client, &job)?;
             }
-            None => {
+            Ok(None) => {
                 std::thread::sleep(config.poll_interval);
+            }
+            Err(e) => {
+                println!("{}", e);
+                std::thread::sleep(config.poll_interval * 2);
             }
         }
     }
