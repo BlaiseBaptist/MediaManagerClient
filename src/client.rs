@@ -96,6 +96,7 @@ impl ServerClient {
     fn is_encoder_functional(encoder: &str) -> bool {
         // Attempts to encode 1 frame of a 64x64 dummy source to the "null" muxer.
         // This forces the encoder to initialize without creating a physical file.
+        println!("encoder: {}", encoder);
         let status = Command::new("ffmpeg")
             .args([
                 "-f",
@@ -111,10 +112,13 @@ impl ServerClient {
                 "-",    // Output to pipe (discarded)
             ])
             .output();
-
+        println!("status: {:?}", status);
         match status {
             Ok(output) => output.status.success(),
-            Err(_) => false,
+            Err(e) => {
+                println!("{:?}", e);
+                return false;
+            }
         }
     }
 
@@ -137,8 +141,9 @@ impl ServerClient {
             .arg("-i")
             .arg(input_path)
             .arg("-c:v")
-            .arg(v_encoder);
-
+            .arg(v_encoder)
+            .arg("-v")
+            .arg("quiet");
         // Apply your specific settings
         match v_encoder {
             "libsvtav1" => cmd.args([
