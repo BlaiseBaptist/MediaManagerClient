@@ -3,25 +3,25 @@ name: Release Binaries
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*' # Triggers on tags like v1.0.0
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: write
+      contents: write # Required to upload files to the Release
     strategy:
       matrix:
         include:
           - os: linux-latest
             target: x86_64-unknown-linux-gnu
-            binary_name: my-app-linux
+            binary_name: MediaMangerClient-linux
           - os: windows-latest
             target: x86_64-pc-windows-gnu
-            binary_name: my-app-windows.exe
+            binary_name: MediaMangerClient.exe
           - os: macos-latest
             target: x86_64-apple-darwin
-            binary_name: my-app-mac
+            binary_name: MediaMangerClient-man
 
     steps:
       - uses: actions/checkout@v4
@@ -31,9 +31,8 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # Using the official cross-rs action to avoid deprecated v3 internal dependencies
       - name: Build with Cross
-        uses: cross-rs/github-action@v1
+        uses: houseabsolute/actions-rust-cross@v1
         with:
           command: build
           target: ${{ matrix.target }}
