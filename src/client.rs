@@ -94,57 +94,50 @@ impl ServerClient {
         "librav1e".to_string()
     }
     fn is_encoder_functional(encoder: &str) -> bool {
-        // Attempts to encode 1 frame of a 64x64 dummy source to the "null" muxer.
-        // This forces the encoder to initialize without creating a physical file.
-        println!("encoder: {}", encoder);
         let status = Command::new("ffmpeg")
             .args([
                 "-f",
                 "lavfi", // Use a virtual input
                 "-i",
-                "nullsrc=s=64x64:r=1", // Minimal 64x64 1fps dummy video
+                "nullsrc=s=256x256:r=1",
                 "-frames:v",
-                "1", // Only process one frame
+                "1",
                 "-c:v",
                 encoder, // Test this specific encoder
                 "-f",
-                "null", // Use the null muxer (no output file)
-                "-",    // Output to pipe (discarded)
+                "null",
+                "-",
             ])
             .output();
-        println!("status: {:?}", status);
         match status {
             Ok(output) => output.status.success(),
-            Err(e) => {
-                println!("{:?}", e);
-                return false;
-            }
+            Err(_) => false,
         }
     }
 
     pub fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
         let output_path = input_path.with_file_name("out.mkv");
-
-        // Determine encoder (matches your logic)
         let v_encoder = match job
             .transcode
             .as_ref()
             .and_then(|s| s.video_codec.as_deref())
         {
-            Some("av1") | None => &Self::get_best_av1_encoder(), // Standard FFmpeg name
-            Some(other) => other,
+            Some("av1") | None => &Self::get_best_av1_encoder(),
+            Some(other) => {
+                println!("WARNING: using given encoder as string directly");
+                other
+            }
         };
 
         let mut cmd = Command::new("ffmpeg");
 
-        cmd.arg("-y") // Overwrite output
+        cmd.arg("-y")
             .arg("-i")
             .arg(input_path)
             .arg("-c:v")
             .arg(v_encoder)
             .arg("-v")
             .arg("quiet");
-        // Apply your specific settings
         match v_encoder {
             "libsvtav1" => cmd.args([
                 "-preset",
@@ -201,7 +194,10 @@ impl ServerClient {
             .and_then(|s| s.audio_codec.as_deref())
         {
             Some("opus") | None => "libopus",
-            Some(other) => other,
+            Some(other) => {
+                println!("WARNING: using given encoder as string directly");
+                other
+            }
         };
         cmd.args([
             "-c:a",
