@@ -47,7 +47,7 @@ impl ServerClient {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let download_url = Url::parse(&format!(
-                "http://{}/{}",
+                "http://{}{}",
                 self.config
                     .server_base_url
                     .host()
@@ -56,7 +56,7 @@ impl ServerClient {
             ))
             .context("job input_url is not a valid URL")?;
             #[cfg(debug_assertions)]
-            println!("Downloading from: {}", download_url);
+            println!("DEBUG: Downloading from: {}", download_url);
             let mut response = reqwest::get(download_url)
                 .await?
                 .error_for_status()
@@ -135,9 +135,9 @@ impl ServerClient {
             .arg("-i")
             .arg(input_path)
             .arg("-c:v")
-            .arg(v_encoder)
-            .arg("-v")
-            .arg("quiet");
+            .arg(v_encoder);
+        #[cfg(not(debug_assertions))]
+        cmd.args(["-hide_banner", "-loglevel", "error", "-stats"]);
         match v_encoder {
             "libsvtav1" => cmd.args([
                 "-preset",
@@ -210,7 +210,8 @@ impl ServerClient {
             "1",
         ])
         .arg(output_path.clone());
-        println!("running: {:?}", cmd);
+        #[cfg(debug_assertions)]
+        println!("DEBUG: Running: {:?}", cmd);
         let status = cmd
             .status()
             .context("FFmpeg failed to start. Is it installed?")?;
@@ -240,7 +241,7 @@ impl ServerClient {
             ))
             .context("delivery output_url is not a valid URL")?;
             #[cfg(debug_assertions)]
-            println!("uploading to: {}", upload_url);
+            println!("DEBUG: uploading to: {}", upload_url);
             client
                 .put(upload_url)
                 .body(body)

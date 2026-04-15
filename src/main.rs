@@ -31,6 +31,10 @@ fn run(client: ServerClient, config: Config) -> Result<()> {
 }
 
 fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
+    println!(
+        "Received job {} from {} -> {}",
+        job.id, job.input_url, job.output_url,
+    );
     let input_path = match client.receive_job_file(job) {
         Ok(path) => path,
         Err(err) => {
@@ -42,22 +46,16 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
             return Ok(());
         }
     };
-
     let transcode = job
         .transcode
         .as_ref()
         .map(|spec| spec.summary())
         .unwrap_or_else(|| "no transcode spec".to_string());
-
     println!(
-        "Received job {} from {} -> {} [{}; {}]",
-        job.id,
-        job.input_url,
-        job.output_url,
+        "Transcoding {} with args {}",
         input_path.display(),
-        transcode,
+        transcode
     );
-
     let output_path = match client.transcode_job_file(job, &input_path) {
         Ok(path) => path,
         Err(err) => {
@@ -70,7 +68,6 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         }
     };
     println!("Transcoded job {} -> {}", job.id, output_path.display());
-
     if let Err(err) = client.upload_job_output(job, &output_path) {
         eprintln!("Failed to upload job {} files: {err:#}", job.id);
         fail_and_cleanup(client, job, &err.to_string());
