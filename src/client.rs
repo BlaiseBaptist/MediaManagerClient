@@ -44,23 +44,23 @@ impl ServerClient {
             .with_context(|| format!("failed to create work dir {}", job_dir.display()))?;
         let final_path = job_dir.join("in.mkv");
         let temp_path = final_path.with_extension("part");
-        println!("Downloading from {}", &job.input_url);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let mut response = reqwest::get(
-                Url::parse(&format!(
-                    "http://{}/{}",
-                    self.config
-                        .server_base_url
-                        .host()
-                        .context("invaild MEDIA_MANAGER_SERVER_URL")?,
-                    &job.input_url
-                ))
-                .context("job input_url is not a valid URL")?,
-            )
-            .await?
-            .error_for_status()
-            .with_context(|| format!("job {} download returned an error", job.id))?;
+            let download_url = Url::parse(&format!(
+                "http://{}/{}",
+                self.config
+                    .server_base_url
+                    .host()
+                    .context("invaild MEDIA_MANAGER_SERVER_URL")?,
+                &job.input_url
+            ))
+            .context("job input_url is not a valid URL")?;
+            #[cfg(debug_assertions)]
+            println!("Downloading from: {}", download_url);
+            let mut response = reqwest::get(download_url)
+                .await?
+                .error_for_status()
+                .with_context(|| format!("job {} download returned an error", job.id))?;
             let mut file: tokio::fs::File = fs::File::create(&temp_path)
                 .await
                 .with_context(|| format!("failed to create {}", temp_path.display()))?;
@@ -230,18 +230,19 @@ impl ServerClient {
             let stream = tokio_util::io::ReaderStream::new(file);
             let body = reqwest::Body::wrap_stream(stream);
             let client = reqwest::Client::new();
+            let upload_url = Url::parse(&format!(
+                "http://{}{}",
+                self.config
+                    .server_base_url
+                    .host()
+                    .context("invaild MEDIA_MANAGER_SERVER_URL")?,
+                &job.output_url
+            ))
+            .context("delivery output_url is not a valid URL")?;
+            #[cfg(debug_assertions)]
+            println!("uploading to: {}", upload_url);
             client
-                .put(
-                    Url::parse(&format!(
-                        "http://{}/{}",
-                        self.config
-                            .server_base_url
-                            .host()
-                            .context("invaild MEDIA_MANAGER_SERVER_URL")?,
-                        &job.input_url
-                    ))
-                    .context("delivery output_url is not a valid URL")?,
-                )
+                .put(upload_url)
                 .body(body)
                 .send()
                 .await
