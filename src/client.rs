@@ -17,7 +17,6 @@ pub struct ServerClient {
 
 impl ServerClient {
     pub fn new(config: Config) -> Result<Self> {
-        println!("{:?}", config.server_base_url.host());
         Ok(Self {
             http: reqwest::blocking::Client::new(),
             config,
