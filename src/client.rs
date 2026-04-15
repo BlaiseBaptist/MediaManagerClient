@@ -17,6 +17,7 @@ pub struct ServerClient {
 
 impl ServerClient {
     pub fn new(config: Config) -> Result<Self> {
+        println!("{:?}", config.server_base_url.host());
         Ok(Self {
             http: reqwest::blocking::Client::new(),
             config,
@@ -30,10 +31,12 @@ impl ServerClient {
         {
             return Ok(None);
         }
+
         let job = response
             .json::<JobResponse>()
             .context("failed to decode job response")?
             .into_job();
+
         Ok(Some(job))
     }
 
@@ -47,7 +50,15 @@ impl ServerClient {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let mut response = reqwest::get(
-                Url::parse(&job.input_url).context("job input_url is not a valid URL")?,
+                Url::parse(&format!(
+                    "http://{}/{}",
+                    self.config
+                        .server_base_url
+                        .host()
+                        .context("invaild MEDIA_MANAGER_SERVER_URL")?,
+                    &job.input_url
+                ))
+                .context("job input_url is not a valid URL")?,
             )
             .await?
             .error_for_status()
