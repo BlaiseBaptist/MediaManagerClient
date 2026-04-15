@@ -3,7 +3,6 @@ use crate::{
     job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse},
 };
 use anyhow::{Context, Result};
-use gstreamer::prelude::*;
 use reqwest::{StatusCode, blocking::Client};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -84,23 +83,39 @@ impl ServerClient {
     }
 
     fn get_best_av1_encoder() -> String {
-        let output = Command::new("ffmpeg").arg("-encoders").output();
-
-        let Ok(output) = output else {
-            return "librav1e".to_string();
-        };
-
-        let encoder_list = String::from_utf8_lossy(&output.stdout);
-
         let candidates = ["av1_nvenc", "av1_qsv", "av1_vaapi", "libsvtav1", "librav1e"];
 
         for name in candidates {
-            if encoder_list.contains(name) {
+            if Self::is_encoder_functional(name) {
                 return name.to_string();
             }
         }
 
         "librav1e".to_string()
+    }
+    fn is_encoder_functional(encoder: &str) -> bool {
+        // Attempts to encode 1 frame of a 64x64 dummy source to the "null" muxer.
+        // This forces the encoder to initialize without creating a physical file.
+        let status = Command::new("ffmpeg")
+            .args([
+                "-f",
+                "lavfi", // Use a virtual input
+                "-i",
+                "nullsrc=s=64x64:r=1", // Minimal 64x64 1fps dummy video
+                "-frames:v",
+                "1", // Only process one frame
+                "-c:v",
+                encoder, // Test this specific encoder
+                "-f",
+                "null", // Use the null muxer (no output file)
+                "-",    // Output to pipe (discarded)
+            ])
+            .output();
+
+        match status {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
+        }
     }
 
     pub fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
@@ -205,81 +220,6 @@ impl ServerClient {
             Err(anyhow::anyhow!("FFmpeg exited with error"))
         }
     }
-    fn get_best_gs_av1_encoder() -> String {
-        let registry = gstreamer::Registry::get();
-        let candidates = ["vaapiav1enc", "svtav1enc", "rav1enc", "avenc_av1"];
-        for name in candidates {
-            if registry
-                .find_feature(name, gstreamer::ElementFactory::static_type())
-                .is_some()
-            {
-                return name.to_string();
-            }
-        }
-        "rav1enc".to_string()
-    }
-    #[allow(dead_code)]
-    pub fn gs_transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
-        let abs_input = input_path.canonicalize()?;
-        let output_path = input_path.with_file_name("out.mkv");
-
-        let a_encoder = match job
-            .transcode
-            .as_ref()
-            .and_then(|s| s.audio_codec.as_deref())
-        {
-            Some("opus") | None => "opusenc",
-            Some(other) => other,
-        };
-        let v_encoder = match job
-            .transcode
-            .as_ref()
-            .and_then(|s| s.video_codec.as_deref())
-        {
-            Some("av1") | None => &Self::get_best_gs_av1_encoder(),
-            Some(other) => other,
-        };
-        let v_settings = match v_encoder {
-            "svtav1enc" => "preset=4 crf=22",
-            "rav1enc" => "speed-preset=3 quantizer=70 threads=0 tiles=9",
-            "avenc_av1" => "cpu-used=3 row-mt=true threads=16",
-            _ => "",
-        };
-        let pipeline_str = format!(
-            "uridecodebin3 uri=file://{input_path} name=dbin \
-            matroskamux name=mux ! filesink location=\"{output_path}\" \
-            dbin. ! queue name=v_queue max-size-buffers=5000 max-size-bytes=0 max-size-time=0 ! \
-            videoconvert ! video/x-raw,format=I420_10LE ! \
-            {v_enc} {v_settings} ! queue ! mux. \
-            dbin. ! queue name=a_queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! \
-            audioconvert ! audioresample ! {a_enc} ! queue ! mux.",
-            input_path = abs_input.display(),
-            output_path = output_path.display(),
-            v_enc = v_encoder,
-            v_settings = v_settings,
-            a_enc = a_encoder
-        );
-        let pipeline =
-            gstreamer::parse::launch(&pipeline_str).context("Failed to parse pipeline")?;
-        pipeline.set_state(gstreamer::State::Playing)?;
-
-        let bus = pipeline.bus().context("No bus")?;
-        for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
-            use gstreamer::MessageView;
-            match msg.view() {
-                MessageView::Eos(..) => break,
-                MessageView::Error(err) => {
-                    pipeline.set_state(gstreamer::State::Null)?;
-                    return Err(anyhow::anyhow!("GStreamer Error: {}", err.error()));
-                }
-                _ => (),
-            }
-        }
-
-        pipeline.set_state(gstreamer::State::Null)?;
-        Ok(output_path)
-    }
-
     pub fn upload_job_output(&self, job: &Job, output_path: &Path) -> Result<()> {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
@@ -321,7 +261,6 @@ impl ServerClient {
         }
     }
 
-    #[allow(dead_code)]
     pub fn report_job_complete(&self, job: &Job) -> Result<()> {
         let body = JobCompleteRequest { job_id: &job.id };
         self.http

@@ -9,12 +9,10 @@ pub enum JobResponse {
 
 impl JobResponse {
     pub fn into_job(self) -> Job {
-        let mut job = match self {
+        match self {
             Self::Direct(job) => job,
             Self::Wrapped { job } => job,
-        };
-        job.filename = sanitize_filename(&job.filename);
-        job
+        }
     }
 }
 
@@ -26,8 +24,6 @@ pub struct Job {
     pub transcode: Option<TranscodeSpec>,
     #[serde(default)]
     pub output_url: String,
-    #[serde(default)]
-    pub filename: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -62,36 +58,13 @@ impl TranscodeSpec {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct JobCompleteRequest<'a> {
     pub job_id: &'a str,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct JobFailedRequest<'a> {
     pub job_id: &'a str,
     pub error: &'a str,
-}
-
-fn sanitize_filename(name: &str) -> String {
-    let trimmed = std::path::Path::new(name)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("input.bin");
-
-    let cleaned: String = trimmed
-        .chars()
-        .map(|ch| match ch {
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
-            _ => ch,
-        })
-        .collect();
-
-    if cleaned.is_empty() {
-        "input.bin".to_string()
-    } else {
-        cleaned
-    }
 }
