@@ -13,10 +13,6 @@ The client:
 5. writes the output file under `MEDIA_MANAGER_WORK_DIR/<job.id>/`
 6. uploads the output file to `delivery.output_url`
 
-It still does **not** call `complete` yet.
-
-If `MEDIA_MANAGER_DEBUG_DRY_RUN` is enabled, the client claims one job, prints the FFmpeg command it would run, marks the job failed with a debug note, and exits without downloading anything.
-
 ## Environment variables
 
 - `MEDIA_MANAGER_SERVER_URL`  
@@ -37,23 +33,8 @@ If `MEDIA_MANAGER_DEBUG_DRY_RUN` is enabled, the client claims one job, prints t
 - `MEDIA_MANAGER_POLL_INTERVAL_SECS`  
   Optional. Defaults to `5`
 
-- `MEDIA_MANAGER_WORK_DIR`  
-  Optional. Defaults to `./work`
-
-- `MEDIA_MANAGER_AUTH_TOKEN`  
-  Optional. If set, the client sends `Authorization: Bearer <token>` on requests
-
-- `MEDIA_MANAGER_ALLOW_INSECURE_TLS`  
-  Optional. If set to `1`, `true`, `yes`, or `on`, the client accepts self-signed or otherwise untrusted HTTPS certificates
-
-- `MEDIA_MANAGER_FORCE_HTTP1`  
-  Optional. Defaults to `1`. Forces the HTTP client to use HTTP/1.1, which can help if the server or proxy resets large HTTP/2 downloads
-
 - `MEDIA_MANAGER_FFMPEG_BIN`  
   Optional. Defaults to `ffmpeg`
-
-- `MEDIA_MANAGER_DEBUG_DRY_RUN`  
-  Optional. If set to `1`, `true`, `yes`, or `on`, enables the one-shot debug mode described above
 
 ## Job claim endpoint
 
@@ -83,52 +64,21 @@ The client expects this shape:
 
 ```json
 {
-  "id": "job-123",
+  "id": "123",
   "input_url": "http://localhost:8000/api/media/jobs/job-123/input",
   "output_url": "http://localhost:8000/api/worker/jobs/job-123/output",
-  "filename": "input.mp4",
   "transcode": {
-    "quality": "23",
+    "quality": "HIGH",
     "video_codec": "av1",
     "audio_codec": "opus",
   },
 }
 ```
 
-### Required fields
+### Fields
 
 - `id`  
   Job identifier. Used as the local work directory name.
 - `input_url`  
 - `output_url`
-- `filename`  
 - `transcode`  
-
-## Lifecycle callbacks
-
-The client has callback methods prepared for future use.
-
-### Complete
-
-```http
-PUT {output_url}
-```
-
-```
-POST /api/worker/jobs/{job_id}/failed
-Content-Type: application/json
-```
-
-Body:
-
-```json
-{
-  "worker_id": "worker-123",
-  "error": "ffmpeg exited with code 1"
-}
-```
-
-## Notes for the server
-
-- Unknown JSON fields are ignored by the client.
-- `id` and `input_url` should be present for every job.
