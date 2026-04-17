@@ -3,25 +3,49 @@ use crate::{
     job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse},
 };
 use anyhow::{Context, Result};
+use log::{debug, warn};
 use reqwest::{StatusCode, blocking::Client};
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+    sync::Arc,
+    time::Duration,
+};
+use std_semaphore::Semaphore;
 use tokio::{fs, io::AsyncWriteExt};
 use url::Url;
-
+pub struct ClientSems {
+    download: Semaphore,
+    upload: Semaphore,
+    transcode: Semaphore,
+}
 pub struct ServerClient {
     http: Client,
     config: Config,
+    client_sems: Arc<ClientSems>,
+    id: usize,
 }
-
+impl ClientSems {
+    pub fn new() -> Self {
+        Self {
+            download: Semaphore::new(1),
+            upload: Semaphore::new(1),
+            transcode: Semaphore::new(2),
+        }
+    }
+}
 impl ServerClient {
-    pub fn new(config: Config) -> Result<Self> {
+    pub fn new(config: Config, client_sems: Arc<ClientSems>, id: usize) -> Result<Self> {
         Ok(Self {
             http: reqwest::blocking::Client::new(),
             config,
+            client_sems,
+            id,
         })
     }
-
+    pub fn poll_interval(&self) -> Duration {
+        return self.config.poll_interval;
+    }
     pub fn poll_next_job(&self) -> Result<Option<Job>> {
         let response = self.http.get(self.config.job_url()).send()?;
 
@@ -39,7 +63,8 @@ impl ServerClient {
     }
 
     pub fn receive_job_file(&self, job: &Job) -> Result<PathBuf> {
-        let final_path = self.config.work_dir.join("in.mkv");
+        let _guard = self.client_sems.download.access();
+        let final_path = self.config.work_dir.join(format!("in{}.mkv", job.id));
         let temp_path = final_path.with_extension("part");
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
@@ -52,8 +77,7 @@ impl ServerClient {
                 &job.input_url
             ))
             .context("job input_url is not a valid URL")?;
-            #[cfg(debug_assertions)]
-            println!("DEBUG: Downloading from: {}", download_url);
+            debug!("Client {}: Downloading from: {}", self.id, download_url);
             let mut response = reqwest::get(download_url)
                 .await?
                 .error_for_status()
@@ -113,6 +137,7 @@ impl ServerClient {
     }
 
     pub fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
+        let _guard = self.client_sems.transcode.access();
         let output_path = input_path.with_file_name("out.mkv");
         let v_encoder = match job
             .transcode
@@ -121,7 +146,7 @@ impl ServerClient {
         {
             Some("av1") | None => &Self::get_best_av1_encoder(),
             Some(other) => {
-                println!("WARNING: using given encoder as string directly");
+                warn!("using given encoder as string directly");
                 other
             }
         };
@@ -192,7 +217,7 @@ impl ServerClient {
         {
             Some("opus") | None => "libopus",
             Some(other) => {
-                println!("WARNING: using given encoder as string directly");
+                warn!("using given encoder as string directly");
                 other
             }
         };
@@ -207,19 +232,23 @@ impl ServerClient {
             "1",
         ])
         .arg(output_path.clone());
-        #[cfg(debug_assertions)]
-        println!("DEBUG: Running: {:?}", cmd);
-        let status = cmd
-            .status()
+        debug!("Client {}: Running: {:?}", self.id, cmd);
+        let output = cmd
+            .output()
             .context("FFmpeg failed to start. Is it installed?")?;
 
-        if status.success() {
+        if output.status.success() {
             Ok(output_path)
         } else {
+            debug!("{}", String::from_utf8_lossy(&output.stderr));
+            debug!("{}", String::from_utf8_lossy(&output.stdout));
             Err(anyhow::anyhow!("FFmpeg exited with error"))
         }
     }
     pub fn upload_job_output(&self, job: &Job, output_path: &Path) -> Result<()> {
+        debug!("Client {}: about to hit guard", self.id);
+        let _guard = self.client_sems.upload.access();
+        debug!("Client {}: passed guard", self.id);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let file = tokio::fs::File::open(output_path)
@@ -237,8 +266,7 @@ impl ServerClient {
                 &job.output_url
             ))
             .context("delivery output_url is not a valid URL")?;
-            #[cfg(debug_assertions)]
-            println!("DEBUG: uploading to: {}", upload_url);
+            debug!("Client {}: DEBUG: uploading to: {}", self.id, upload_url);
             client
                 .put(upload_url)
                 .body(body)

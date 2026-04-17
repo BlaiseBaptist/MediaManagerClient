@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1"
+log = "0.4.29"
+pretty_env_logger = "0.5.0"
 reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "json",
@@ -12,6 +14,7 @@ reqwest = { version = "0.12", default-features = false, features = [
   "blocking",
 ] }
 serde = { version = "1", features = ["derive"] }
+std-semaphore = "0.1.0"
 tokio = { version = "1", features = [
   "fs",
   "macros",
