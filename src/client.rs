@@ -138,7 +138,7 @@ impl ServerClient {
 
     pub fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
         let _guard = self.client_sems.transcode.access();
-        let output_path = input_path.with_file_name("out.mkv");
+        let output_path = input_path.with_file_name(format!("out{}.mkv", job.id));
         let v_encoder = match job
             .transcode
             .as_ref()
@@ -281,12 +281,17 @@ impl ServerClient {
     }
 
     pub fn cleanup_job_files(&self, job: &Job) -> Result<()> {
-        let job_dir = self.config.work_dir.join(&job.id);
-        match std::fs::remove_dir_all(&job_dir) {
+        match std::fs::remove_file(format!("in{}.mkv", job.id)) {
             Ok(()) => Ok(()),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(err) => Err(err).with_context(|| format!("failed to remove {}", job_dir.display())),
-        }
+            Err(err) => Err(err).with_context(|| format!("failed to remove in{}.mkv", job.id)),
+        }?;
+        match std::fs::remove_file(format!("out{}.mkv", job.id)) {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(err).with_context(|| format!("failed to remove out{}.mkv", job.id)),
+        }?;
+        Ok(())
     }
 
     pub fn report_job_complete(&self, job: &Job) -> Result<()> {
