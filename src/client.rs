@@ -64,7 +64,7 @@ impl ServerClient {
 
     pub fn receive_job_file(&self, job: &Job) -> Result<PathBuf> {
         let _guard = self.client_sems.download.access();
-        let final_path = self.config.work_dir.join(format!("in{}.mkv", job.id));
+        let final_path = self.config.work_dir.join(format!("in{}.mkv", self.id));
         let temp_path = final_path.with_extension("part");
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
@@ -138,7 +138,7 @@ impl ServerClient {
 
     pub fn transcode_job_file(&self, job: &Job, input_path: &Path) -> Result<PathBuf> {
         let _guard = self.client_sems.transcode.access();
-        let output_path = input_path.with_file_name(format!("out{}.mkv", job.id));
+        let output_path = input_path.with_file_name(format!("out{}.mkv", self.id));
         let v_encoder = match job
             .transcode
             .as_ref()
@@ -280,16 +280,16 @@ impl ServerClient {
         Ok(())
     }
 
-    pub fn cleanup_job_files(&self, job: &Job) -> Result<()> {
-        match std::fs::remove_file(format!("in{}.mkv", job.id)) {
+    pub fn cleanup_job_files(&self) -> Result<()> {
+        match std::fs::remove_file(format!("in{}.mkv", self.id)) {
             Ok(()) => Ok(()),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(err) => Err(err).with_context(|| format!("failed to remove in{}.mkv", job.id)),
+            Err(err) => Err(err).with_context(|| format!("failed to remove in{}.mkv", self.id)),
         }?;
-        match std::fs::remove_file(format!("out{}.mkv", job.id)) {
+        match std::fs::remove_file(format!("out{}.mkv", self.id)) {
             Ok(()) => Ok(()),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(err) => Err(err).with_context(|| format!("failed to remove out{}.mkv", job.id)),
+            Err(err) => Err(err).with_context(|| format!("failed to remove out{}.mkv", self.id)),
         }?;
         Ok(())
     }

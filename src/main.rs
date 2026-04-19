@@ -88,14 +88,14 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
             "Failed to report completion for job {} from {}: {err:#}",
             job.id, job.input_url
         );
-        if let Err(cleanup_err) = client.cleanup_job_files(job) {
+        if let Err(cleanup_err) = client.cleanup_job_files() {
             error!("Failed to clean up job {} files: {cleanup_err:#}", job.id);
         } else {
             info!("Cleaned up local files for job {}", job.id);
         }
         return Ok(());
     }
-    if let Err(err) = client.cleanup_job_files(job) {
+    if let Err(err) = client.cleanup_job_files() {
         error!("Failed to clean up job {} files: {err:#}", job.id);
     } else {
         info!("Cleaned up local files for job {}", job.id);
@@ -112,7 +112,7 @@ fn fail_and_cleanup(client: &ServerClient, job: &Job, reason: &str) {
         );
     }
 
-    if let Err(err) = client.cleanup_job_files(job) {
+    if let Err(err) = client.cleanup_job_files() {
         error!("Failed to clean up job {} files: {err:#}", job.id);
     } else {
         info!("Cleaned up local files for job {}", job.id);
