@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1"
+gethostname = "1.1.0"
 log = "0.4.29"
 pretty_env_logger = "0.5.0"
 reqwest = { version = "0.12", default-features = false, features = [
@@ -15,13 +16,6 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 serde = { version = "1", features = ["derive"] }
 std-semaphore = "0.1.0"
-tokio = { version = "1", features = [
-  "fs",
-  "macros",
-  "process",
-  "rt-multi-thread",
-  "signal",
-  "time",
-] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 tokio-util = { version = "0.7", features = ["io"] }
 url = "2"

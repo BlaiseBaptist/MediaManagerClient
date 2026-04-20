@@ -19,19 +19,24 @@ pub struct ClientSems {
     upload: Semaphore,
     transcode: Semaphore,
 }
+impl ClientSems {
+    pub fn new(config: &Config) -> Self {
+        Self {
+            download: Semaphore::new(config.downloads),
+            upload: Semaphore::new(config.uploads),
+            transcode: Semaphore::new(config.transcodes),
+        }
+    }
+}
 pub struct ServerClient {
     http: Client,
     config: Config,
     client_sems: Arc<ClientSems>,
     id: usize,
 }
-impl ClientSems {
-    pub fn new() -> Self {
-        Self {
-            download: Semaphore::new(1),
-            upload: Semaphore::new(1),
-            transcode: Semaphore::new(2),
-        }
+impl std::fmt::Display for ServerClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "Client {}", self.id)
     }
 }
 impl ServerClient {
@@ -77,7 +82,7 @@ impl ServerClient {
                 &job.input_url
             ))
             .context("job input_url is not a valid URL")?;
-            debug!("Client {}: Downloading from: {}", self.id, download_url);
+            debug!("{}: Downloading from: {}", self, download_url);
             let mut response = reqwest::get(download_url)
                 .await?
                 .error_for_status()
@@ -158,8 +163,6 @@ impl ServerClient {
             .arg(input_path)
             .arg("-c:v")
             .arg(v_encoder);
-        #[cfg(not(debug_assertions))]
-        cmd.args(["-hide_banner", "-loglevel", "error", "-stats"]);
         match v_encoder {
             "libsvtav1" => cmd.args([
                 "-preset",
@@ -232,7 +235,7 @@ impl ServerClient {
             "1",
         ])
         .arg(output_path.clone());
-        debug!("Client {}: Running: {:?}", self.id, cmd);
+        debug!("{}: Running: {:?}", self, cmd);
         let output = cmd
             .output()
             .context("FFmpeg failed to start. Is it installed?")?;
@@ -246,9 +249,7 @@ impl ServerClient {
         }
     }
     pub fn upload_job_output(&self, job: &Job, output_path: &Path) -> Result<()> {
-        debug!("Client {}: about to hit guard", self.id);
         let _guard = self.client_sems.upload.access();
-        debug!("Client {}: passed guard", self.id);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let file = tokio::fs::File::open(output_path)
@@ -266,7 +267,7 @@ impl ServerClient {
                 &job.output_url
             ))
             .context("delivery output_url is not a valid URL")?;
-            debug!("Client {}: DEBUG: uploading to: {}", self.id, upload_url);
+            debug!("{}: uploading to: {}", self, upload_url);
             client
                 .put(upload_url)
                 .body(body)
@@ -295,7 +296,10 @@ impl ServerClient {
     }
 
     pub fn report_job_complete(&self, job: &Job) -> Result<()> {
-        let body = JobCompleteRequest { job_id: &job.id };
+        let body = JobCompleteRequest {
+            hostname: &self.config.hostname,
+            job_id: &job.id,
+        };
         self.http
             .get(self.config.complete_url(&job.id))
             .json(&body)
@@ -308,6 +312,7 @@ impl ServerClient {
 
     pub fn report_job_failed(&self, job: &Job, error: &str) -> Result<()> {
         let body = JobFailedRequest {
+            hostname: &self.config.hostname,
             job_id: &job.id,
             error,
         };

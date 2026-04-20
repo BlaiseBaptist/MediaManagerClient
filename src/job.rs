@@ -60,11 +60,13 @@ impl TranscodeSpec {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct JobCompleteRequest<'a> {
+    pub hostname: &'a str,
     pub job_id: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct JobFailedRequest<'a> {
+    pub hostname: &'a str,
     pub job_id: &'a str,
     pub error: &'a str,
 }

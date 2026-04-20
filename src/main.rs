@@ -12,7 +12,7 @@ fn main() {
     pretty_env_logger::init_timed();
     let config = Config::from_env().unwrap();
     const NUMBER_OF_TIMES_TO_RUN: usize = 5;
-    let client_sems = Arc::new(client::ClientSems::new());
+    let client_sems = Arc::new(client::ClientSems::new(&config));
     for i in 0..NUMBER_OF_TIMES_TO_RUN {
         let client = ServerClient::new(config.clone(), client_sems.clone(), i).unwrap();
         thread::spawn(move || run(client).unwrap());
@@ -60,7 +60,8 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         .map(|spec| spec.summary())
         .unwrap_or_else(|| "no transcode spec".to_string());
     info!(
-        "Transcoding {} with args {}",
+        "{}: Transcoding {} with args {}",
+        client,
         input_path.display(),
         transcode
     );
@@ -75,25 +76,24 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
             return Ok(());
         }
     };
-    info!("Transcoded job {} -> {}", job.id, output_path.display());
+    info!(
+        "{}: Transcoded job {} -> {}",
+        client,
+        job.id,
+        output_path.display()
+    );
     if let Err(err) = client.upload_job_output(job, &output_path) {
         error!("Failed to upload job {} files: {err:#}", job.id);
         fail_and_cleanup(client, job, &err.to_string());
         return Ok(());
     } else {
-        info!("Uploaded files for job {}", job.id);
+        info!("{}: Uploaded files for job {}", client, job.id);
     }
     if let Err(err) = client.report_job_complete(job) {
         error!(
             "Failed to report completion for job {} from {}: {err:#}",
             job.id, job.input_url
         );
-        if let Err(cleanup_err) = client.cleanup_job_files() {
-            error!("Failed to clean up job {} files: {cleanup_err:#}", job.id);
-        } else {
-            info!("Cleaned up local files for job {}", job.id);
-        }
-        return Ok(());
     }
     if let Err(err) = client.cleanup_job_files() {
         error!("Failed to clean up job {} files: {err:#}", job.id);

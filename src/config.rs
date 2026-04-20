@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
+use gethostname::gethostname;
 use std::{env, path::PathBuf, time::Duration};
 use url::Url;
-
 #[derive(Clone, Debug)]
 pub struct Config {
     pub server_base_url: Url,
@@ -10,6 +10,10 @@ pub struct Config {
     pub failed_path: String,
     pub poll_interval: Duration,
     pub work_dir: PathBuf,
+    pub hostname: String,
+    pub downloads: isize,
+    pub uploads: isize,
+    pub transcodes: isize,
 }
 
 impl Config {
@@ -18,26 +22,37 @@ impl Config {
             .context("MEDIA_MANAGER_SERVER_URL is required")?
             .parse::<Url>()
             .context("MEDIA_MANAGER_SERVER_URL must be a valid URL")?;
-
         let job_path = env::var("MEDIA_MANAGER_JOB_PATH")
             .unwrap_or_else(|_| "/api/worker/jobs/next".to_string());
-
         let complete_path = env::var("MEDIA_MANAGER_COMPLETE_PATH")
             .unwrap_or_else(|_| "/api/worker/jobs/{job_id}/complete".to_string());
-
         let failed_path = env::var("MEDIA_MANAGER_FAILED_PATH")
             .unwrap_or_else(|_| "/api/worker/jobs/{job_id}/failed".to_string());
-
         let poll_interval = env::var("MEDIA_MANAGER_POLL_INTERVAL_SECS")
             .ok()
             .and_then(|value| value.parse::<u64>().ok())
             .map(Duration::from_secs)
             .unwrap_or_else(|| Duration::from_secs(5));
-
         let work_dir = env::var("MEDIA_MANAGER_WORK_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| env::temp_dir());
-
+        let downloads = env::var("MEDIA_MANAGER_DOWNLOADS")
+            .ok()
+            .and_then(|value| value.parse::<isize>().ok())
+            .unwrap_or_else(|| 1);
+        let uploads = env::var("MEDIA_MANAGER_UPLOADS")
+            .ok()
+            .and_then(|value| value.parse::<isize>().ok())
+            .unwrap_or_else(|| 1);
+        let transcodes = env::var("MEDIA_MANAGER_TRANSCODES")
+            .ok()
+            .and_then(|value| value.parse::<isize>().ok())
+            .unwrap_or_else(|| 2);
+        let hostname = env::var("MEDIA_MANAGER_HOSTNAME").unwrap_or_else(|_| {
+            gethostname()
+                .into_string()
+                .unwrap_or_else(|_| "NoHostName".to_string())
+        });
         Ok(Self {
             server_base_url,
             job_path,
@@ -45,6 +60,10 @@ impl Config {
             failed_path,
             poll_interval,
             work_dir,
+            hostname,
+            downloads,
+            uploads,
+            transcodes,
         })
     }
 
