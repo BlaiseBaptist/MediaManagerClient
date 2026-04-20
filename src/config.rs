@@ -48,7 +48,7 @@ impl Config {
             .ok()
             .and_then(|value| value.parse::<isize>().ok())
             .unwrap_or_else(|| 2);
-        let hostname = env::var("MEDIA_MANAGER_HOSTNAME").unwrap_or_else(|_| {
+        let hostname = env::var("HOSTNAME").unwrap_or_else(|_| {
             gethostname()
                 .into_string()
                 .unwrap_or_else(|_| "NoHostName".to_string())

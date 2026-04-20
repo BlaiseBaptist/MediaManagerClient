@@ -15,26 +15,42 @@ The client:
 
 ## Environment variables
 
-- `MEDIA_MANAGER_SERVER_URL`  
+- `MEDIA_MANAGER_SERVER_URL`
+
   Required. Base URL of the Django server, for example `https://localhost:8000`
+- `MEDIA_MANAGER_JOB_PATH`
 
-- `MEDIA_MANAGER_JOB_PATH`  
   Optional. Defaults to `/api/worker/jobs/next`
+- `MEDIA_MANAGER_WORK_DIR`
 
-- `MEDIA_MANAGER_COMPLETE_PATH`  
+  Optional. Default to system tmp dir
+- `MEDIA_MANAGER_COMPLETE_PATH`
+
   Optional. Defaults to `/api/worker/jobs/{job_id}/complete`
+- `MEDIA_MANAGER_FAILED_PATH`
 
-- `MEDIA_MANAGER_FAILED_PATH`  
   Optional. Defaults to `/api/worker/jobs/{job_id}/failed`
+- `MEDIA_MANAGER_WORKER_ID`
 
-- `MEDIA_MANAGER_WORKER_ID`  
   Optional. Defaults to `worker-<pid>`
+- `MEDIA_MANAGER_POLL_INTERVAL_SECS`
 
-- `MEDIA_MANAGER_POLL_INTERVAL_SECS`  
   Optional. Defaults to `5`
+- `MEDIA_MANAGER_FFMPEG_BIN`
 
-- `MEDIA_MANAGER_FFMPEG_BIN`  
   Optional. Defaults to `ffmpeg`
+- `MEDIA_MANAGER_DOWNLOADS`
+
+  Optional. Defaults to `1`
+- `MEDIA_MANAGER_UPLOADS`
+
+  Optional. Defaults to `1`
+- `MEDIA_MANAGER_TRANSCODES`
+
+  Optional. Defaults to `2`
+- `HOSTNAME`
+
+  Optional. Defaults to system hostname
 
 ## Job claim endpoint
 
@@ -70,15 +86,15 @@ The client expects this shape:
   "transcode": {
     "quality": "HIGH",
     "video_codec": "av1",
-    "audio_codec": "opus",
-  },
+    "audio_codec": "opus"
+  }
 }
 ```
 
 ### Fields
 
-- `id`  
+- `id`\
   Job identifier. Used as the local work directory name.
-- `input_url`  
+- `input_url`
 - `output_url`
-- `transcode`  
+- `transcode`
