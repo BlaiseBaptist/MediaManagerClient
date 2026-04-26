@@ -303,13 +303,31 @@ impl ServerClient {
             hostname: &self.config.hostname,
             job_id: &job.id,
         };
-        self.http
-            .get(self.config.complete_url(&job.id))
-            .json(&body)
-            .send()
-            .with_context(|| format!("failed to send complete callback for job {}", job.id))?
-            .error_for_status()
-            .with_context(|| format!("complete callback rejected for job {}", job.id))?;
+
+        let max_attempts = 5;
+        for i in 1..=max_attempts {
+            let res = self
+                .http
+                .get(self.config.complete_url(&job.id))
+                .json(&body)
+                .send()
+                .with_context(|| format!("failed to send complete callback for job {}", job.id));
+            if let Ok(resp) = res {
+                match resp.error_for_status() {
+                    Ok(_) => return Ok(()),
+                    Err(e) => {
+                        let is_client_error = e.status().map_or(false, |s| s.is_client_error());
+                        if is_client_error || i == max_attempts {
+                            return Err(anyhow::anyhow!(e))
+                                .with_context(|| format!("Permanent failure for job {}", job.id));
+                        }
+                        eprintln!("Attempt {} failed (server error), retrying...", i);
+                    }
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+
         Ok(())
     }
 
