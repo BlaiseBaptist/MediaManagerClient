@@ -321,7 +321,6 @@ impl ServerClient {
                             return Err(anyhow::anyhow!(e))
                                 .with_context(|| format!("Permanent failure for job {}", job.id));
                         }
-                        eprintln!("Attempt {} failed (server error), retrying...", i);
                     }
                 }
             }
