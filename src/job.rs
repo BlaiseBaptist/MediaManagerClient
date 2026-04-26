@@ -66,7 +66,6 @@ pub struct JobCompleteRequest<'a> {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct JobFailedRequest<'a> {
-    pub hostname: &'a str,
     pub job_id: &'a str,
     pub error: &'a str,
 }

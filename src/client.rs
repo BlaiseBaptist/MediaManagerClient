@@ -52,7 +52,11 @@ impl ServerClient {
         return self.config.poll_interval;
     }
     pub fn poll_next_job(&self) -> Result<Option<Job>> {
-        let response = self.http.get(self.config.job_url()).send()?;
+        let response = self
+            .http
+            .get(self.config.job_url())
+            .json(&self.config.hostname)
+            .send()?;
 
         if response.status() == StatusCode::NO_CONTENT || response.status() == StatusCode::NOT_FOUND
         {
@@ -82,7 +86,6 @@ impl ServerClient {
                 &job.input_url
             ))
             .context("job input_url is not a valid URL")?;
-            debug!("{}: Downloading from: {}", self, download_url);
             let mut response = reqwest::get(download_url)
                 .await?
                 .error_for_status()
@@ -312,7 +315,6 @@ impl ServerClient {
 
     pub fn report_job_failed(&self, job: &Job, error: &str) -> Result<()> {
         let body = JobFailedRequest {
-            hostname: &self.config.hostname,
             job_id: &job.id,
             error,
         };

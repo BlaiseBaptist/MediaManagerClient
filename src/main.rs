@@ -40,8 +40,8 @@ fn run(client: ServerClient) -> Result<()> {
 
 fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
     info!(
-        "Received job {} from {} -> {}",
-        job.id, job.input_url, job.output_url,
+        "{}: Received job {} from {} -> {}",
+        client, job.id, job.input_url, job.output_url,
     );
     let input_path = match client.receive_job_file(job) {
         Ok(path) => path,
@@ -98,7 +98,7 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
     if let Err(err) = client.cleanup_job_files() {
         error!("Failed to clean up job {} files: {err:#}", job.id);
     } else {
-        info!("Cleaned up local files for job {}", job.id);
+        info!("{}: Cleaned up local files for job {}", client, job.id);
     }
 
     Ok(())
@@ -115,6 +115,6 @@ fn fail_and_cleanup(client: &ServerClient, job: &Job, reason: &str) {
     if let Err(err) = client.cleanup_job_files() {
         error!("Failed to clean up job {} files: {err:#}", job.id);
     } else {
-        info!("Cleaned up local files for job {}", job.id);
+        info!("{}: Cleaned up local files for job {}", client, job.id);
     }
 }
