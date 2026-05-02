@@ -34,6 +34,8 @@ pub struct TranscodeSpec {
     pub video_codec: Option<String>,
     #[serde(default)]
     pub audio_codec: Option<String>,
+    #[serde(default)]
+    pub bitrate: Option<u64>,
 }
 
 impl TranscodeSpec {

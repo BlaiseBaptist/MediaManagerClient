@@ -86,8 +86,6 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         error!("Failed to upload job {} files: {err:#}", job.id);
         fail_and_cleanup(client, job, &err.to_string());
         return Ok(());
-    } else {
-        info!("{}: Uploaded files for job {}", client, job.id);
     }
     if let Err(err) = client.report_job_complete(job) {
         error!(
@@ -95,6 +93,7 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
             job.id, job.input_url
         );
     }
+    info!("{}: Uploaded files for job {}", client, job.id);
     if let Err(err) = client.cleanup_job_files() {
         error!("Failed to clean up job {} files: {err:#}", job.id);
     } else {

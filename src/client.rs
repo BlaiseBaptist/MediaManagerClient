@@ -3,7 +3,7 @@ use crate::{
     job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse},
 };
 use anyhow::{Context, Result};
-use log::{debug, warn};
+use log::{debug, error, warn};
 use reqwest::{StatusCode, blocking::Client};
 use std::{
     path::{Path, PathBuf},
@@ -238,16 +238,26 @@ impl ServerClient {
             "1",
         ])
         .arg(output_path.clone());
+        let bitrate = match job.transcode.as_ref().and_then(|s| s.bitrate) {
+            Some(e) => e,
+            None => 100000000,
+        };
+        cmd.args([
+            "-maxrate",
+            &bitrate.to_string(),
+            "-bufsize",
+            &(bitrate * 3).to_string(),
+        ]);
         debug!("{}: Running: {:?}", self, cmd);
         let output = cmd
             .output()
             .context("FFmpeg failed to start. Is it installed?")?;
 
+        debug!("{}", String::from_utf8_lossy(&output.stdout));
         if output.status.success() {
             Ok(output_path)
         } else {
             debug!("{}", String::from_utf8_lossy(&output.stderr));
-            debug!("{}", String::from_utf8_lossy(&output.stdout));
             Err(anyhow::anyhow!("FFmpeg exited with error"))
         }
     }
@@ -304,26 +314,19 @@ impl ServerClient {
             job_id: &job.id,
         };
 
-        let max_attempts = 5;
+        let max_attempts = 10;
         for i in 1..=max_attempts {
             let res = self
                 .http
                 .get(self.config.complete_url(&job.id))
                 .json(&body)
                 .send()
-                .with_context(|| format!("failed to send complete callback for job {}", job.id));
-            if let Ok(resp) = res {
-                match resp.error_for_status() {
-                    Ok(_) => return Ok(()),
-                    Err(e) => {
-                        let is_client_error = e.status().map_or(false, |s| s.is_client_error());
-                        if is_client_error || i == max_attempts {
-                            return Err(anyhow::anyhow!(e))
-                                .with_context(|| format!("Permanent failure for job {}", job.id));
-                        }
-                        eprintln!("Attempt {} failed (server error), retrying...", i);
-                    }
-                }
+                .with_context(|| format!("failed to send complete callback for job {}", job.id))
+                .map(|x| x.error_for_status());
+            if let Ok(Ok(_)) = res {
+                return Ok(());
+            } else {
+                error!("Attempt {} failed: {:?}", i, res);
             }
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
