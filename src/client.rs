@@ -2,7 +2,7 @@ use crate::{
     config::Config,
     job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse},
 };
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use log::{debug, error, warn};
 use reqwest::{StatusCode, blocking::Client};
 use std::{
@@ -64,6 +64,7 @@ impl ServerClient {
         }
 
         let job = response
+            .error_for_status()?
             .json::<JobResponse>()
             .context("failed to decode job response")?
             .into_job();
@@ -321,14 +322,13 @@ impl ServerClient {
                 .get(self.config.complete_url(&job.id))
                 .json(&body)
                 .send()
-                .with_context(|| format!("failed to send complete callback for job {}", job.id))
                 .map(|x| x.error_for_status());
-            if let Ok(Ok(_)) = res {
-                return Ok(());
-            } else {
-                error!("Attempt {} failed: {:?}", i, res);
+            match res {
+                Ok(Err(e)) => error!("Attempt: {}, Ok(Err({}))", i, e),
+                Err(e) => return Err(anyhow!("Job changed or missing: {}", e)),
+                Ok(Ok(_)) => return Ok(()),
             }
-            std::thread::sleep(std::time::Duration::from_secs(2));
+            std::thread::sleep(std::time::Duration::from_secs(10));
         }
 
         Ok(())

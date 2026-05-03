@@ -21,18 +21,25 @@ fn main() {
 }
 
 fn run(client: ServerClient) -> Result<()> {
+    let mut error_sleep_time = client.poll_interval();
+    let max_sleep_time = client.poll_interval() * 64;
     loop {
         match client.poll_next_job() {
             Ok(Some(job)) => {
                 process_job(&client, &job)?;
             }
             Ok(None) => {
+                error_sleep_time = client.poll_interval();
                 std::thread::sleep(client.poll_interval());
             }
             Err(e) => {
                 info!("{}", e);
-                //make backoff
-                std::thread::sleep(client.poll_interval() * 2);
+                if error_sleep_time < max_sleep_time {
+                    error_sleep_time *= 2;
+                } else {
+                    error_sleep_time = max_sleep_time;
+                }
+                std::thread::sleep(error_sleep_time);
             }
         }
     }
@@ -92,8 +99,10 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
             "Failed to report completion for job {} from {}: {err:#}",
             job.id, job.input_url
         );
+        fail_and_cleanup(client, job, &err.to_string());
+    } else {
+        info!("{}: Uploaded files for job {}", client, job.id);
     }
-    info!("{}: Uploaded files for job {}", client, job.id);
     if let Err(err) = client.cleanup_job_files() {
         error!("Failed to clean up job {} files: {err:#}", job.id);
     } else {
