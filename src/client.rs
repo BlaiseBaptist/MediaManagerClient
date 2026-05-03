@@ -3,7 +3,7 @@ use crate::{
     job::{Job, JobCompleteRequest, JobFailedRequest, JobResponse},
 };
 use anyhow::{Context, Result, anyhow};
-use log::{debug, error, warn};
+use log::{debug, warn};
 use reqwest::{StatusCode, blocking::Client};
 use std::{
     path::{Path, PathBuf},
@@ -294,7 +294,6 @@ impl ServerClient {
         })?;
         Ok(())
     }
-
     pub fn cleanup_job_files(&self) -> Result<()> {
         match std::fs::remove_file(format!("in{}.mkv", self.id)) {
             Ok(()) => Ok(()),
@@ -316,7 +315,7 @@ impl ServerClient {
         };
 
         let max_attempts = 10;
-        for i in 1..=max_attempts {
+        for _ in 1..=max_attempts {
             let res = self
                 .http
                 .get(self.config.complete_url(&job.id))
@@ -324,7 +323,7 @@ impl ServerClient {
                 .send()
                 .map(|x| x.error_for_status());
             match res {
-                Ok(Err(e)) => error!("Attempt: {}, Ok(Err({}))", i, e),
+                Ok(Err(_)) => {}
                 Err(e) => return Err(anyhow!("Job changed or missing: {}", e)),
                 Ok(Ok(_)) => return Ok(()),
             }
@@ -333,7 +332,6 @@ impl ServerClient {
 
         Ok(())
     }
-
     pub fn report_job_failed(&self, job: &Job, error: &str) -> Result<()> {
         let body = JobFailedRequest {
             job_id: &job.id,

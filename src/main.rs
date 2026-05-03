@@ -6,7 +6,7 @@ use anyhow::Result;
 use client::ServerClient;
 use config::Config;
 use job::Job;
-use log::{error, info};
+use log::{error, info, warn};
 use std::{sync::Arc, thread, time::Duration};
 fn main() {
     pretty_env_logger::init_timed();
@@ -33,7 +33,7 @@ fn run(client: ServerClient) -> Result<()> {
                 std::thread::sleep(client.poll_interval());
             }
             Err(e) => {
-                info!("{}", e);
+                warn!("{}", e);
                 if error_sleep_time < max_sleep_time {
                     error_sleep_time *= 2;
                 } else {
@@ -57,7 +57,7 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
                 "Failed to download job {} from {}: {err:#}",
                 job.id, job.input_url
             );
-            fail_and_cleanup(client, job, "download failed");
+            cleanup_and_fail(client, job, &err.to_string())?;
             return Ok(());
         }
     };
@@ -79,7 +79,7 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
                 "Failed to transcode job {} from {}: {err:#}",
                 job.id, job.input_url
             );
-            fail_and_cleanup(client, job, "transcode failed");
+            cleanup_and_fail(client, job, &err.to_string())?;
             return Ok(());
         }
     };
@@ -90,39 +90,16 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         output_path.display()
     );
     if let Err(err) = client.upload_job_output(job, &output_path) {
-        error!("Failed to upload job {} files: {err:#}", job.id);
-        fail_and_cleanup(client, job, &err.to_string());
-        return Ok(());
-    }
+        cleanup_and_fail(client, job, &err.to_string())?;
+    };
     if let Err(err) = client.report_job_complete(job) {
-        error!(
-            "Failed to report completion for job {} from {}: {err:#}",
-            job.id, job.input_url
-        );
-        fail_and_cleanup(client, job, &err.to_string());
-    } else {
-        info!("{}: Uploaded files for job {}", client, job.id);
-    }
-    if let Err(err) = client.cleanup_job_files() {
-        error!("Failed to clean up job {} files: {err:#}", job.id);
-    } else {
-        info!("{}: Cleaned up local files for job {}", client, job.id);
+        cleanup_and_fail(client, job, &err.to_string())?;
     }
 
     Ok(())
 }
-
-fn fail_and_cleanup(client: &ServerClient, job: &Job, reason: &str) {
-    if let Err(err) = client.report_job_failed(job, reason) {
-        error!(
-            "Failed to report failure for job {} from {} after {reason}: {err:#}",
-            job.id, job.input_url
-        );
-    }
-
-    if let Err(err) = client.cleanup_job_files() {
-        error!("Failed to clean up job {} files: {err:#}", job.id);
-    } else {
-        info!("{}: Cleaned up local files for job {}", client, job.id);
-    }
+fn cleanup_and_fail(client: &ServerClient, job: &Job, error: &str) -> Result<()> {
+    client.report_job_failed(job, error)?;
+    client.cleanup_job_files()?;
+    Ok(())
 }
