@@ -2,7 +2,7 @@ mod client;
 mod config;
 mod job;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use client::ServerClient;
 use config::Config;
 use job::Job;
@@ -26,7 +26,11 @@ fn run(client: ServerClient) -> Result<()> {
     loop {
         match client.poll_next_job() {
             Ok(Some(job)) => {
-                process_job(&client, &job)?;
+                if let Err(err) = process_job(&client, &job) {
+                    if let Err(err_inner) = cleanup_and_fail(&client, &job, &err.to_string()) {
+                        error!("error: {}", err_inner);
+                    };
+                };
             }
             Ok(None) => {
                 error_sleep_time = client.poll_interval();
@@ -50,17 +54,9 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         "{}: Received job {} from {} -> {}",
         client, job.id, job.input_url, job.output_url,
     );
-    let input_path = match client.receive_job_file(job) {
-        Ok(path) => path,
-        Err(err) => {
-            error!(
-                "Failed to download job {} from {}: {err:#}",
-                job.id, job.input_url
-            );
-            cleanup_and_fail(client, job, &err.to_string())?;
-            return Ok(());
-        }
-    };
+    let input_path = client
+        .receive_job_file(job)
+        .with_context(|| format!("Failed to download job {} from {}", job.id, job.input_url,))?;
     let transcode = job
         .transcode
         .as_ref()
@@ -72,30 +68,17 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         input_path.display(),
         transcode
     );
-    let output_path = match client.transcode_job_file(job, &input_path) {
-        Ok(path) => path,
-        Err(err) => {
-            error!(
-                "Failed to transcode job {} from {}: {err:#}",
-                job.id, job.input_url
-            );
-            cleanup_and_fail(client, job, &err.to_string())?;
-            return Ok(());
-        }
-    };
+    let output_path = client
+        .transcode_job_file(job, &input_path)
+        .with_context(|| format!("Failed to transcode job {} from {} ", job.id, job.input_url))?;
     info!(
         "{}: Transcoded job {} -> {}",
         client,
         job.id,
         output_path.display()
     );
-    if let Err(err) = client.upload_job_output(job, &output_path) {
-        cleanup_and_fail(client, job, &err.to_string())?;
-    };
-    if let Err(err) = client.report_job_complete(job) {
-        cleanup_and_fail(client, job, &err.to_string())?;
-    }
-
+    client.upload_job_output(job, &output_path)?;
+    client.report_job_complete(job)?;
     Ok(())
 }
 fn cleanup_and_fail(client: &ServerClient, job: &Job, error: &str) -> Result<()> {
