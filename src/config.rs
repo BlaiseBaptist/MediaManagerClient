@@ -19,7 +19,7 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Result<Self> {
         let server_base_url = env::var("MEDIA_MANAGER_SERVER_URL")
-            .context("MEDIA_MANAGER_SERVER_URL is required")?
+            .unwrap_or_else(|_| "http://100.69.59.62:8000".to_string())
             .parse::<Url>()
             .context("MEDIA_MANAGER_SERVER_URL must be a valid URL")?;
         let job_path = env::var("MEDIA_MANAGER_JOB_PATH")
