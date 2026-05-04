@@ -2,7 +2,7 @@
 name = "MediaManagerClient"
 version = "0.1.0"
 edition = "2024"
-
+repository = "https://github.com/BlaiseBaptist/MediaManagerClient.git"
 [dependencies]
 anyhow = "1"
 gethostname = "1.1.0"
@@ -19,3 +19,8 @@ std-semaphore = "0.1.0"
 tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 tokio-util = { version = "0.7", features = ["io"] }
 url = "2"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
