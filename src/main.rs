@@ -51,7 +51,7 @@ fn run(client: ServerClient) -> Result<()> {
 
 fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
     info!(
-        "{}: Received job {} from {} -> {}",
+        "{}: Received job {}: {} -> {}",
         client, job.id, job.input_url, job.output_url,
     );
     let input_path = client
@@ -63,21 +63,29 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         .map(|spec| spec.summary())
         .unwrap_or_else(|| "no transcode spec".to_string());
     info!(
-        "{}: Transcoding {} with args {}",
+        "{}: Downloaded job {}: {} -> {}",
         client,
-        input_path.display(),
-        transcode
+        job.id,
+        job.input_url,
+        input_path.display()
     );
     let output_path = client
         .transcode_job_file(job, &input_path)
         .with_context(|| format!("Failed to transcode job {} from {} ", job.id, job.input_url))?;
     info!(
-        "{}: Transcoded job {} -> {}",
+        "{}: Transcoded {} with args {}",
         client,
-        job.id,
-        output_path.display()
+        input_path.display(),
+        transcode
     );
     client.upload_job_output(job, &output_path)?;
+    info!(
+        "{}: Uploaded job {}: {} -> {}",
+        client,
+        job.id,
+        output_path.display(),
+        job.output_url,
+    );
     client.report_job_complete(job)?;
     Ok(())
 }
