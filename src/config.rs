@@ -13,6 +13,7 @@ pub struct Config {
     pub hostname: String,
     pub downloads: isize,
     pub uploads: isize,
+    pub workers: isize,
     pub transcodes: isize,
 }
 
@@ -48,6 +49,10 @@ impl Config {
             .ok()
             .and_then(|value| value.parse::<isize>().ok())
             .unwrap_or_else(|| 2);
+        let workers = env::var("MEDIA_MANAGER_WORKERS")
+            .ok()
+            .and_then(|value| value.parse::<isize>().ok())
+            .unwrap_or_else(|| downloads + transcodes + uploads);
         let hostname = env::var("HOSTNAME").unwrap_or_else(|_| {
             gethostname()
                 .into_string()
@@ -63,6 +68,7 @@ impl Config {
             hostname,
             downloads,
             uploads,
+            workers,
             transcodes,
         })
     }

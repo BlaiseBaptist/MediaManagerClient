@@ -11,9 +11,15 @@ use std::{sync::Arc, thread, time::Duration};
 fn main() {
     pretty_env_logger::init_timed();
     let config = Config::from_env().unwrap();
-    const NUMBER_OF_TIMES_TO_RUN: usize = 5;
+    let workers: usize = match config.workers.try_into() {
+        Ok(v) => v,
+        Err(_) => {
+            error!("way to many workers setting to 5");
+            5
+        }
+    };
     let client_sems = Arc::new(client::ClientSems::new(&config));
-    for i in 0..NUMBER_OF_TIMES_TO_RUN {
+    for i in 0..workers {
         let client = ServerClient::new(config.clone(), client_sems.clone(), i).unwrap();
         thread::spawn(move || run(client).unwrap());
     }
@@ -87,10 +93,12 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
         job.output_url,
     );
     client.report_job_complete(job)?;
+    info!("{}: Completed job {}", client, job.id);
     Ok(())
 }
 fn cleanup_and_fail(client: &ServerClient, job: &Job, error: &str) -> Result<()> {
     client.report_job_failed(job, error)?;
+    warn!("{}: Failed job {}", client, job.id);
     client.cleanup_job_files()?;
     Ok(())
 }
