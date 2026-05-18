@@ -324,7 +324,10 @@ impl ServerClient {
                 .map(|x| x.error_for_status());
             match res {
                 Ok(Err(_)) => {}
-                Err(e) => return Err(anyhow!("Job changed or missing: {}", e)),
+                Err(e) => {
+                    // error!("job changed or missing: {:?}", e);
+                    return Err(anyhow!("Job changed or missing: {}", e));
+                }
                 Ok(Ok(_)) => return Ok(()),
             }
             std::thread::sleep(std::time::Duration::from_secs(10));

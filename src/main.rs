@@ -34,7 +34,7 @@ fn run(client: ServerClient) -> Result<()> {
             Ok(Some(job)) => {
                 if let Err(err) = process_job(&client, &job) {
                     if let Err(err_inner) = cleanup_and_fail(&client, &job, &err.to_string()) {
-                        error!("error: {}", err_inner);
+                        error!("error: {:?}", err_inner);
                     };
                 };
             }
@@ -57,48 +57,54 @@ fn run(client: ServerClient) -> Result<()> {
 
 fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
     info!(
-        "{}: Received job {}: {} -> {}",
+        "{}: Received {}: {} -> {}",
         client, job.id, job.input_url, job.output_url,
     );
     let input_path = client
         .receive_job_file(job)
-        .with_context(|| format!("Failed to download job {} from {}", job.id, job.input_url,))?;
+        .with_context(|| format!("{}: Failed download {}: {}", client, job.id, job.input_url,))?;
     let transcode = job
         .transcode
         .as_ref()
         .map(|spec| spec.summary())
         .unwrap_or_else(|| "no transcode spec".to_string());
-    info!(
-        "{}: Downloaded job {}: {} -> {}",
-        client,
-        job.id,
-        job.input_url,
-        input_path.display()
-    );
+    info!("{}: Downloaded {}: {}", client, job.id, job.input_url,);
     let output_path = client
         .transcode_job_file(job, &input_path)
-        .with_context(|| format!("Failed to transcode job {} from {} ", job.id, job.input_url))?;
+        .with_context(|| format!("{}: Failed transcode {}: {}", client, job.id, job.input_url,))?;
     info!(
         "{}: Transcoded {} with args {}",
         client,
         input_path.display(),
         transcode
     );
-    client.upload_job_output(job, &output_path)?;
+    client
+        .upload_job_output(job, &output_path)
+        .with_context(|| {
+            format!(
+                "{}: Failed upload {}: {} -> {}",
+                client,
+                job.id,
+                output_path.display(),
+                job.output_url,
+            )
+        })?;
     info!(
-        "{}: Uploaded job {}: {} -> {}",
+        "{}: Uploaded {}: {} -> {}",
         client,
         job.id,
         output_path.display(),
         job.output_url,
     );
-    client.report_job_complete(job)?;
+    client
+        .report_job_complete(job)
+        .with_context(|| format!("{}: Failed report {}: {}", client, job.id, job.output_url,))?;
     info!("{}: Completed job {}", client, job.id);
     Ok(())
 }
 fn cleanup_and_fail(client: &ServerClient, job: &Job, error: &str) -> Result<()> {
     client.report_job_failed(job, error)?;
-    warn!("{}: Failed job {}", client, job.id);
+    warn!("{}: Failed Err: {:?}", client, error);
     client.cleanup_job_files()?;
     Ok(())
 }
