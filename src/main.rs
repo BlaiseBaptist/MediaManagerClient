@@ -2,7 +2,7 @@ mod client;
 mod config;
 mod job;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Result};
 use client::ServerClient;
 use config::Config;
 use job::Job;
@@ -33,7 +33,8 @@ fn run(client: ServerClient) -> Result<()> {
         match client.poll_next_job() {
             Ok(Some(job)) => {
                 if let Err(err) = process_job(&client, &job) {
-                    if let Err(err_inner) = cleanup_and_fail(&client, &job, &err.to_string()) {
+                    error!("error outer: {:?}", &err);
+                    if let Err(err_inner) = cleanup_and_fail(&client, &job, &err) {
                         error!("error: {:?}", err_inner);
                     };
                 };
@@ -102,9 +103,8 @@ fn process_job(client: &ServerClient, job: &Job) -> Result<()> {
     info!("{}: Completed job {}", client, job.id);
     Ok(())
 }
-fn cleanup_and_fail(client: &ServerClient, job: &Job, error: &str) -> Result<()> {
-    client.report_job_failed(job, error)?;
-    warn!("{}: Failed Err: {:?}", client, error);
+fn cleanup_and_fail(client: &ServerClient, job: &Job, error: &Error) -> Result<()> {
+    client.report_job_failed(job, &error.to_string())?;
     client.cleanup_job_files()?;
     Ok(())
 }
